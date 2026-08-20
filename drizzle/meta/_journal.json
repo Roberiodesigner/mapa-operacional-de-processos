@@ -1,0 +1,48 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1787203427836,
+      "tag": "0000_fearless_zodiak",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1787204715725,
+      "tag": "0001_open_sandman",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1787204738332,
+      "tag": "0002_abandoned_gladiator",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1787213299299,
+      "tag": "0003_furry_blade",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1787214315311,
+      "tag": "0004_flat_carlie_cooper",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1787234286397,
+      "tag": "0005_motionless_pepper_potts",
+      "breakpoints": true
+    }
+  ]
+}
