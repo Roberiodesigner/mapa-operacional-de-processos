@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { allowedMapIds, canAccessMap, canWorkspace, getWorkspaceAccessContext } from "../_lib/collaboration";
+import { allowedMapIds, canAccessMap, canWorkspace, getWorkspaceAccessContext, workspaceWriteAllowed } from "../_lib/collaboration";
 
 type ApprovalRow = {
   id: string; workspace_id: string; map_id: string; node_id: string; scope: "node" | "branch";
@@ -83,6 +83,7 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   const current = await context();
   if (!current) return Response.json({ error: "Autenticação necessária" }, { status: 401 });
+  if (!workspaceWriteAllowed(current)) return Response.json({ error: "Licença inativa. A revisão permanece disponível somente para leitura." }, { status: 402 });
   const body = await request.json() as { id?: string; decision?: "approved" | "changes_requested"; note?: string };
   if (!body.id || !["approved", "changes_requested"].includes(body.decision || "")) return Response.json({ error: "Decisão inválida" }, { status: 400 });
   const approval = await env.DB.prepare("SELECT * FROM approval_records WHERE id = ? AND workspace_id = ? LIMIT 1").bind(body.id, current.workspace.id).first<ApprovalRow>();

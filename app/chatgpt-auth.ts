@@ -1,10 +1,12 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { createSupabaseServerClient, isSupabaseAuthConfigured } from "./supabase/server";
 
 export type ChatGPTUser = {
   displayName: string;
   email: string;
   fullName: string | null;
+  authProvider: "supabase" | "chatgpt";
 };
 
 const USER_EMAIL_HEADER = "oai-authenticated-user-email";
@@ -17,6 +19,20 @@ const SIGN_OUT_PATH = "/signout-with-chatgpt";
 const CALLBACK_PATH = "/callback";
 
 export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
+  const supabase = await createSupabaseServerClient();
+  if (supabase) {
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (!error && user?.email) {
+      const fullName = typeof user.user_metadata?.full_name === "string" ? user.user_metadata.full_name.trim() : "";
+      return {
+        displayName: fullName || user.email,
+        email: user.email.toLowerCase(),
+        fullName: fullName || null,
+        authProvider: "supabase",
+      };
+    }
+  }
+
   const requestHeaders = await headers();
   const email = requestHeaders.get(USER_EMAIL_HEADER);
   if (!email) return null;
@@ -32,6 +48,7 @@ export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
     displayName: fullName ?? email,
     email,
     fullName,
+    authProvider: "chatgpt",
   };
 }
 
@@ -40,8 +57,9 @@ export async function requireChatGPTUser(
 ): Promise<ChatGPTUser> {
   const user = await getChatGPTUser();
   if (user) return user;
-
-  redirect(chatGPTSignInPath(returnTo));
+  const safeReturnTo = safeRelativeReturnPath(returnTo);
+  if (isSupabaseAuthConfigured()) redirect(`/login?return_to=${encodeURIComponent(safeReturnTo)}`);
+  redirect(chatGPTSignInPath(safeReturnTo));
 }
 
 export function chatGPTSignInPath(returnTo: string): string {

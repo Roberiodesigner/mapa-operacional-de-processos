@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { getChatGPTUser } from "../../chatgpt-auth";
 import { allowedMapIds, canWorkspace, getWorkspaceAccessContext, type WorkspaceAccessContext } from "../_lib/collaboration";
+import { ensureCommercialSchema, ensureWorkspaceLicense, getWorkspaceEntitlement } from "../_lib/commercial";
 
 type WorkspaceRow = { id: string; name: string; owner_email: string; trial_started_at: string; trial_ends_at: string; plan: string };
 type StateRow = { payload: string; version: number; updated_at: string };
@@ -49,12 +50,14 @@ async function ensureSchema() {
 
 async function workspaceFor(email: string, displayName: string) {
   await ensureSchema();
+  await ensureCommercialSchema();
   const existing = await env.DB.prepare("SELECT id, name, owner_email, trial_started_at, trial_ends_at, plan FROM workspaces WHERE lower(owner_email) = ? LIMIT 1").bind(email.toLowerCase()).first<WorkspaceRow>();
-  if (existing) return existing;
+  if (existing) { await ensureWorkspaceLicense(existing); return existing; }
   const now = new Date();
   const workspace: WorkspaceRow = { id: crypto.randomUUID(), name: `${displayName.split(" ")[0] || "Meu"} Workspace`, owner_email: email.toLowerCase(), trial_started_at: now.toISOString(), trial_ends_at: addDays(now, 7).toISOString(), plan: "trial" };
   await env.DB.prepare("INSERT INTO workspaces (id, owner_email, name, trial_started_at, trial_ends_at, plan) VALUES (?, ?, ?, ?, ?, ?)")
     .bind(workspace.id, email, workspace.name, workspace.trial_started_at, workspace.trial_ends_at, workspace.plan).run();
+  await ensureWorkspaceLicense(workspace);
   return workspace;
 }
 
@@ -63,7 +66,8 @@ async function resolveContext(user: { email: string; displayName: string }): Pro
   const existing = await getWorkspaceAccessContext();
   if (existing) return existing;
   const workspace = await workspaceFor(user.email, user.displayName);
-  return { user, workspace, memberId: null, role: "owner", allMaps: true };
+  const commercial = await getWorkspaceEntitlement(workspace);
+  return { user, workspace, memberId: null, role: "owner", allMaps: true, commercialCanWrite: commercial.entitlement.canEdit };
 }
 
 type PersistedMap = { id: string; title: string; favorite?: boolean; archived?: boolean; updatedAt?: string };
@@ -145,10 +149,11 @@ export async function GET() {
   if (!user) return Response.json({ error: "Autenticação necessária" }, { status: 401 });
   try {
     const context = await resolveContext(user);
+    const commercial = await getWorkspaceEntitlement(context.workspace);
     const state = await env.DB.prepare("SELECT payload, version, updated_at FROM project_states WHERE workspace_id = ? LIMIT 1").bind(context.workspace.id).first<StateRow>();
     const mapIds = await allowedMapIds(context);
     const parsed = state ? filterStateForMaps(JSON.parse(state.payload) as PersistedState, mapIds) : null;
-    return Response.json({ user, workspace: context.workspace, access: { role: context.role, allMaps: context.allMaps, canEdit: canWorkspace(context, "edit"), canExecute: canWorkspace(context, "execute"), canComment: canWorkspace(context, "comment"), canApprove: canWorkspace(context, "approve"), canManageMembers: canWorkspace(context, "manage_members") }, state: parsed, version: state?.version ?? 0, serverTime: new Date().toISOString() });
+    return Response.json({ user, workspace: context.workspace, entitlement: commercial.entitlement, license: commercial.license ? { planCode: commercial.license.plan_code, status: commercial.license.status, provider: commercial.license.provider, currentPeriodEndsAt: commercial.license.current_period_ends_at } : null, access: { role: context.role, allMaps: context.allMaps, canEdit: canWorkspace(context, "edit"), canExecute: canWorkspace(context, "execute"), canComment: canWorkspace(context, "comment"), canApprove: canWorkspace(context, "approve"), canManageMembers: canWorkspace(context, "manage_members") }, state: parsed, version: state?.version ?? 0, serverTime: new Date().toISOString() });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Não foi possível carregar o Workspace" }, { status: 500 });
   }
@@ -163,9 +168,16 @@ export async function POST(request: Request) {
     const incomingState = await request.json() as PersistedState;
     if (!incomingState || typeof incomingState !== "object" || !Array.isArray(incomingState.maps) || !Array.isArray(incomingState.nodes) || !Array.isArray(incomingState.dependencies)) return Response.json({ error: "Estado inválido" }, { status: 400 });
     const context = await resolveContext(user);
+    if (!context.commercialCanWrite) return Response.json({ error: "Licença inativa. Seus dados permanecem disponíveis somente para leitura.", readOnly: true }, { status: 402 });
     if (!canWorkspace(context, "edit")) return Response.json({ error: "Seu perfil não pode editar a estrutura dos mapas" }, { status: 403 });
     const mapIds = await allowedMapIds(context);
-    const currentRow = mapIds === null ? null : await env.DB.prepare("SELECT payload FROM project_states WHERE workspace_id = ? LIMIT 1").bind(context.workspace.id).first<{ payload: string }>();
+    const currentRow = await env.DB.prepare("SELECT payload, version FROM project_states WHERE workspace_id = ? LIMIT 1").bind(context.workspace.id).first<{ payload: string; version: number }>();
+    const expectedHeader = request.headers.get("x-workspace-version");
+    const expectedVersion = expectedHeader === null ? null : Number(expectedHeader);
+    const overwriteConflict = request.headers.get("x-workspace-conflict-resolution") === "overwrite";
+    if (currentRow && !overwriteConflict && expectedVersion !== null && (!Number.isFinite(expectedVersion) || expectedVersion !== currentRow.version)) {
+      return Response.json({ error: "Este mapa foi atualizado por outra pessoa", conflict: true, currentVersion: currentRow.version }, { status: 409 });
+    }
     const state = mapIds === null || !currentRow ? incomingState : mergeRestrictedState(JSON.parse(currentRow.payload) as PersistedState, incomingState, mapIds);
     if (!state || typeof state !== "object" || !Array.isArray(state.maps) || !Array.isArray(state.nodes) || !Array.isArray(state.dependencies)) return Response.json({ error: "Estado inválido" }, { status: 400 });
     if (state.maps.length > 250 || state.nodes.length > 800 || state.dependencies.length > 2400) return Response.json({ error: "Limite de itens excedido" }, { status: 400 });
@@ -173,12 +185,16 @@ export async function POST(request: Request) {
     if (state.dependencies.some(dependency => dependency.nodeId === dependency.dependsOnId || !nodeIds.has(dependency.nodeId) || !nodeIds.has(dependency.dependsOnId))) return Response.json({ error: "Dependência inválida" }, { status: 400 });
     if (hasDependencyCycle(state.dependencies)) return Response.json({ error: "Dependência circular detectada" }, { status: 409 });
     const workspace = context.workspace;
-    if (workspace.plan === "trial" && new Date(workspace.trial_ends_at).getTime() < Date.now()) {
-      return Response.json({ error: "Trial encerrado", readOnly: true }, { status: 402 });
-    }
     const payload = JSON.stringify(state);
-    const result = await env.DB.prepare("INSERT INTO project_states (id, workspace_id, payload, version, updated_at) VALUES (?, ?, ?, 1, CURRENT_TIMESTAMP) ON CONFLICT(workspace_id) DO UPDATE SET payload = excluded.payload, version = project_states.version + 1, updated_at = CURRENT_TIMESTAMP RETURNING version, updated_at")
-      .bind(crypto.randomUUID(), workspace.id, payload).first<{ version: number; updated_at: string }>();
+    const result = currentRow
+      ? await env.DB.prepare("UPDATE project_states SET payload = ?, version = version + 1, updated_at = CURRENT_TIMESTAMP WHERE workspace_id = ? AND version = ? RETURNING version, updated_at")
+        .bind(payload, workspace.id, currentRow.version).first<{ version: number; updated_at: string }>()
+      : await env.DB.prepare("INSERT INTO project_states (id, workspace_id, payload, version, updated_at) VALUES (?, ?, ?, 1, CURRENT_TIMESTAMP) ON CONFLICT(workspace_id) DO NOTHING RETURNING version, updated_at")
+        .bind(crypto.randomUUID(), workspace.id, payload).first<{ version: number; updated_at: string }>();
+    if (!result) {
+      const latest = await env.DB.prepare("SELECT version FROM project_states WHERE workspace_id = ? LIMIT 1").bind(workspace.id).first<{ version: number }>();
+      return Response.json({ error: "Este mapa foi atualizado por outra pessoa", conflict: true, currentVersion: latest?.version ?? 0 }, { status: 409 });
+    }
     await syncOperationalRecords(workspace.id, state);
     return Response.json({ ok: true, version: result?.version ?? 1, updatedAt: result?.updated_at ?? new Date().toISOString() });
   } catch (error) {

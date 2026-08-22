@@ -35,9 +35,25 @@ Plataforma visual para transformar processos em execução. Esta versão entrega
 - comentários em threads com respostas, menções, reações e resolução;
 - central de notificações para menções, respostas, convites e alterações de acesso;
 - atualização operacional protegida para executores, sem liberar a edição estrutural;
+- presença ao vivo por mapa, atualização automática e detecção de versões remotas;
+- proteção contra sobrescrita quando duas pessoas salvam simultaneamente;
+- central Minhas Tarefas com visões pessoal e da equipe, busca e filtros por prazo ou bloqueio;
+- execução rápida de progresso diretamente na lista, com abertura da etapa no mapa;
+- links públicos de revisão com token aleatório armazenado somente como hash;
+- revisão de mapa completo ou ramo específico sem login, em modo estritamente somente leitura;
+- marcações numeradas em cards ou no canvas, comentários e respostas identificadas pelo nome do cliente;
+- validade, renovação, revogação imediata, rate limit e trilha de auditoria dos links de revisão;
+- notificações ao proprietário e exibição das marcações diretamente no mapa interno;
 - autosave persistente com feedback visual;
 - banco relacional com isolamento por proprietário no backend;
 - layout próprio para desktop e mobile.
+- tela de login dedicada com autenticação segura via ChatGPT;
+- painel Super Admin para clientes, Workspaces, licenças, receita estimada e trilha comercial;
+- Configurações → Planos como fonte única de nomes, valores, periodicidade, trial e destaque comercial;
+- página pública, área de assinatura e checkout sincronizados automaticamente com os planos salvos;
+- Configurações → Integrações com status, ambiente, webhook e teste de conexão do Asaas;
+- checkout recorrente hospedado pelo Asaas e liberação de licença somente após confirmação por webhook;
+- processamento idempotente de eventos de checkout, pagamento e assinatura.
 
 ## Arquitetura
 
@@ -65,6 +81,15 @@ O schema está em `db/schema.ts` e a migration gerada em `drizzle/`. As tabelas 
 - `approval_records` e `approval_event_records`: solicitações, decisões e histórico de aprovação.
 - `workspace_members` e `map_permission_records`: equipe, papéis e acesso granular por mapa;
 - `comment_reaction_records` e `notification_records`: reações e notificações colaborativas.
+- `workspace_presence_records`: presença temporária por mapa e etapa em edição;
+- `review_link_records`: links públicos com escopo, validade, hash e estado de revogação;
+- `review_comment_markers`: localização visual dos comentários de clientes;
+- `review_rate_limit_records`: proteção contra abuso nos comentários públicos.
+- `platform_admins`: administradores globais da plataforma;
+- `billing_plans`: catálogo central de planos e preços exibido em toda a plataforma;
+- `workspace_licenses`: licença, período e vínculo de cobrança de cada Workspace;
+- `billing_checkout_records`: vínculo seguro entre checkout Asaas, Workspace e plano;
+- `billing_event_records`: eventos comerciais e webhooks processados com idempotência.
 
 Os registros são vinculados ao Workspace e os identificadores de armazenamento são compostos para evitar colisão entre empresas.
 
@@ -86,6 +111,10 @@ npm run lint
 npm run db:generate
 ```
 
+## Integração Asaas
+
+Configure `ASAAS_ENVIRONMENT`, `ASAAS_API_KEY` e `ASAAS_WEBHOOK_TOKEN` como segredos do ambiente hospedado. Comece em `sandbox`. No painel Super Admin, abra **Configurações → Integrações**, copie a URL do webhook e cadastre-a no Asaas usando o mesmo token seguro. A chave da API nunca é exibida nem salva no banco da aplicação.
+
 ## Modelos operacionais
 
 A galeria inclui modelos prontos em fluxo e em mapa radial. O modelo em destaque, **Estratégia de Tráfego Pago — 30 Dias**, cria automaticamente um objetivo central, dez frentes operacionais e 69 tarefas editáveis de preparação, posicionamento, conteúdo, anúncios, atendimento, mensuração e otimização.
@@ -105,9 +134,9 @@ O modelo **Segundo Cérebro — Mapa de Conhecimento** cria uma rede visual com 
 
 ## Próximas fases
 
-1. atualização colaborativa em tempo real e presença no mapa;
-2. envio externo de convites e liberação controlada de acesso ao site;
-3. billing mensal/anual e bloqueio após o trial;
-4. processos reutilizáveis, Decision Log e IA generativa com confirmação obrigatória.
+1. envio externo de convites e liberação controlada de acesso ao site;
+2. cupons, relatórios financeiros e conciliação avançada;
+3. processos reutilizáveis e Decision Log;
+4. IA generativa com confirmação obrigatória para alterações.
 
 Não armazene senhas ou credenciais de terceiros. Os campos de acesso aceitam somente plataforma, usuário/e-mail, identificador e referência.

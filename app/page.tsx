@@ -1,4 +1,22 @@
 import Link from "next/link";
+import { env } from "cloudflare:workers";
+import { DEFAULT_COMMERCIAL_PLANS } from "./commercial-policy";
+import { ensureCommercialSchema } from "./api/_lib/commercial";
+
+export const dynamic = "force-dynamic";
+
+type PublicPlan = { code:string; name:string; description:string; price_cents:number; billing_interval:"month"|"year"; trial_days:number; highlighted:number };
+
+async function publicPlans():Promise<PublicPlan[]> {
+  try {
+    await ensureCommercialSchema();
+    const rows = await env.DB.prepare("SELECT code, name, description, price_cents, billing_interval, trial_days, highlighted FROM billing_plans WHERE active = 1 ORDER BY highlighted DESC, price_cents ASC").all<PublicPlan>();
+    if (rows.results.length) return rows.results;
+  } catch {}
+  return DEFAULT_COMMERCIAL_PLANS.map(plan=>({code:plan.code,name:plan.name,description:plan.description,price_cents:plan.priceCents,billing_interval:plan.interval,trial_days:7,highlighted:plan.code==="annual"?1:0}));
+}
+
+const money=(cents:number)=>(cents/100).toLocaleString("pt-BR",{style:"currency",currency:"BRL",minimumFractionDigits:cents%100?2:0});
 
 const features = [
   ["01", "Mapa que executa", "Cada etapa pode ter responsável, prazo, prioridade, checklist e evidências."],
@@ -37,20 +55,22 @@ function ProductMap() {
   );
 }
 
-export default function Home() {
+export default async function Home() {
+  const plans=await publicPlans();
+  const trialDays=Math.max(...plans.map(plan=>plan.trial_days),7);
   return (
     <main>
       <nav className="nav shell" aria-label="Navegação principal">
         <Link className="brand" href="/"><span>MO</span> Mapa Operacional</Link>
         <div className="nav-links"><a href="#como-funciona">Como funciona</a><a href="#recursos">Recursos</a><a href="#planos">Planos</a></div>
-        <Link className="button button-ghost" href="/app">Entrar</Link>
+        <Link className="button button-ghost" href="/login">Entrar</Link>
       </nav>
 
       <section className="hero shell">
         <div className="eyebrow"><span>●</span> Da estratégia à execução, em um só lugar</div>
         <h1>Transforme processos em mapas.<br /><em>E mapas em execução.</em></h1>
         <p>Planeje visualmente, transforme cada etapa em tarefas, acompanhe o progresso e documente todo o processo sem sair do mapa.</p>
-        <div className="hero-actions"><Link className="button button-primary" href="/app">Testar grátis por 7 dias <span>→</span></Link><a className="button button-secondary" href="#como-funciona">Ver como funciona</a></div>
+        <div className="hero-actions"><Link className="button button-primary" href="/cadastro">Testar grátis por {trialDays} dias <span>→</span></Link><a className="button button-secondary" href="#como-funciona">Ver como funciona</a></div>
         <div className="trust-row"><span>✓ Sem cartão</span><span>✓ Primeiro mapa em 60 segundos</span><span>✓ Cancele quando quiser</span></div>
         <ProductMap />
       </section>
@@ -65,14 +85,13 @@ export default function Home() {
 
       <section className="section features-section" id="recursos"><div className="shell"><span className="section-label">INTELIGÊNCIA OPERACIONAL</span><div className="section-heading"><h2>Menos controle manual.<br />Mais clareza para decidir.</h2><p>Uma interface limpa por fora e um sistema completo de gestão por dentro.</p></div><div className="features-grid">{features.map(([number,title,description])=><article key={title}><span>{number}</span><h3>{title}</h3><p>{description}</p><i>↗</i></article>)}</div></div></section>
 
-      <section className="section shell pricing-section" id="planos"><span className="section-label">PLANOS SIMPLES</span><div className="section-heading"><h2>Comece pequeno.<br />Organize algo grande.</h2><p>Sete dias para experimentar tudo, sem cartão. Escolha o plano somente quando o produto fizer sentido para você.</p></div><div className="pricing-grid">
-        <article className="price-card"><div><span>Mensal</span><p>Flexibilidade para começar</p></div><h3><sup>R$</sup> 5<small>/mês</small></h3><ul><li>Mapas e tarefas ilimitados</li><li>Colaboração com a equipe</li><li>Histórico e documentação</li><li>Templates operacionais</li></ul><Link className="button button-secondary" href="/app">Começar teste grátis</Link></article>
-        <article className="price-card highlighted"><div className="popular">MAIS VANTAJOSO</div><div><span>Anual</span><p>Economize e evolua seus processos</p></div><h3><sup>R$</sup> 49<small>/ano</small></h3><ul><li>Todos os recursos do plano mensal</li><li>Dois meses de economia</li><li>Playbooks reutilizáveis</li><li>Inteligência operacional</li></ul><Link className="button button-primary" href="/app">Testar grátis por 7 dias <span>→</span></Link></article>
+      <section className="section shell pricing-section" id="planos"><span className="section-label">PLANOS SIMPLES</span><div className="section-heading"><h2>Comece pequeno.<br />Organize algo grande.</h2><p>{trialDays} dias para experimentar tudo, sem cartão. Escolha o plano somente quando o produto fizer sentido para você.</p></div><div className="pricing-grid">
+        {plans.map(plan=><article className={`price-card ${plan.highlighted?"highlighted":""}`} key={plan.code}>{plan.highlighted?<div className="popular">MAIS VANTAJOSO</div>:null}<div><span>{plan.name}</span><p>{plan.description}</p></div><h3>{money(plan.price_cents)}<small>/{plan.billing_interval==="year"?"ano":"mês"}</small></h3><ul><li>Mapas e tarefas ilimitados</li><li>Colaboração com a equipe</li><li>Histórico e documentação</li><li>Templates operacionais</li></ul><Link className={`button ${plan.highlighted?"button-primary":"button-secondary"}`} href={`/cadastro?plan=${encodeURIComponent(plan.code)}`}>Testar grátis por {plan.trial_days} dias {plan.highlighted?<span>→</span>:null}</Link></article>)}
       </div></section>
 
       <section className="section faq-section"><div className="shell faq-grid"><div><span className="section-label">PERGUNTAS FREQUENTES</span><h2>Antes de começar,<br />talvez você queira saber.</h2></div><div>{faqs.map(([q,a],index)=><details key={q} open={index===0}><summary>{q}<span>+</span></summary><p>{a}</p></details>)}</div></div></section>
 
-      <section className="final-cta shell"><div><span className="section-label light">COMECE AGORA</span><h2>Seu próximo processo pode ser muito mais claro.</h2><p>Crie o primeiro mapa em menos de 60 segundos.</p></div><Link className="button button-white" href="/app">Testar grátis por 7 dias <span>→</span></Link></section>
+      <section className="final-cta shell"><div><span className="section-label light">COMECE AGORA</span><h2>Seu próximo processo pode ser muito mais claro.</h2><p>Crie o primeiro mapa em menos de 60 segundos.</p></div><Link className="button button-white" href="/cadastro">Testar grátis por {trialDays} dias <span>→</span></Link></section>
       <footer className="shell footer"><Link className="brand" href="/"><span>MO</span> Mapa Operacional</Link><p>© 2026. Processos claros. Execução inteligente.</p><div><a href="#planos">Planos</a><a href="#recursos">Recursos</a></div></footer>
     </main>
   );

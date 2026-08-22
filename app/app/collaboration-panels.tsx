@@ -37,6 +37,7 @@ export type RichComment = {
   editedAt: string | null;
   resolvedAt: string | null;
   resolvedBy: string;
+  reviewPinNumber?: number | null;
   reactions: { emoji: string; count: number; reactedByMe: boolean }[];
 };
 
@@ -80,7 +81,7 @@ export function CommentsThread({comments,members,currentEmail,canComment,canReso
 function CommentCard({comment,currentEmail,canResolve,onReply,onReact,onResolve,onDelete}:{comment:RichComment;currentEmail:string;canResolve:boolean;onReply:()=>void;onReact:(id:string,emoji:string)=>Promise<void>;onResolve:(id:string,resolved:boolean)=>Promise<void>;onDelete:(id:string)=>Promise<void>}) {
   const own=comment.authorEmail.toLowerCase()===currentEmail.toLowerCase();
   const reaction=(emoji:string)=>comment.reactions.find(item=>item.emoji===emoji);
-  return <article className="rich-comment"><span className="comment-avatar">{comment.authorName.split(" ").map(part=>part[0]).join("").slice(0,2).toUpperCase()}</span><div><header><b>{comment.authorName}</b><small>{new Date(comment.createdAt).toLocaleString("pt-BR")}{comment.editedAt?" · editado":""}</small>{comment.resolvedAt&&<em>✓ Resolvido</em>}</header><p>{comment.content}</p><div className="comment-toolbar"><button onClick={onReply}>↩ Responder</button>{["👍","✅","👀","💡"].map(emoji=>{const item=reaction(emoji);return <button className={item?.reactedByMe?"active":""} key={emoji} onClick={()=>onReact(comment.id,emoji)}>{emoji}{item&&item.count>0?` ${item.count}`:""}</button>})}{(canResolve||own)&&<button onClick={()=>onResolve(comment.id,!comment.resolvedAt)}>{comment.resolvedAt?"Reabrir":"Resolver"}</button>}{(canResolve||own)&&<button className="comment-delete" onClick={()=>onDelete(comment.id)}>Excluir</button>}</div></div></article>;
+  return <article className="rich-comment"><span className="comment-avatar">{comment.authorName.split(" ").map(part=>part[0]).join("").slice(0,2).toUpperCase()}</span><div><header><b>{comment.authorName}</b><small>{new Date(comment.createdAt).toLocaleString("pt-BR")}{comment.editedAt?" · editado":""}</small>{comment.reviewPinNumber&&<em className="review-pin-label">⌖ Marcação #{comment.reviewPinNumber}</em>}{comment.resolvedAt&&<em>✓ Resolvido</em>}</header><p>{comment.content}</p><div className="comment-toolbar"><button onClick={onReply}>↩ Responder</button>{["👍","✅","👀","💡"].map(emoji=>{const item=reaction(emoji);return <button className={item?.reactedByMe?"active":""} key={emoji} onClick={()=>onReact(comment.id,emoji)}>{emoji}{item&&item.count>0?` ${item.count}`:""}</button>})}{(canResolve||own)&&<button onClick={()=>onResolve(comment.id,!comment.resolvedAt)}>{comment.resolvedAt?"Reabrir":"Resolver"}</button>}{(canResolve||own)&&<button className="comment-delete" onClick={()=>onDelete(comment.id)}>Excluir</button>}</div></div></article>;
 }
 
 export function NotificationsPanel({items,loading,onOpen,onReadAll,onClose}:{items:AppNotification[];loading:boolean;onOpen:(item:AppNotification)=>void;onReadAll:()=>void;onClose:()=>void}) {

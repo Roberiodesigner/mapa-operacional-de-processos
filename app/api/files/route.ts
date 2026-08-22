@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { MAX_FILES_PER_NODE, sanitizeFileName, validateUpload } from "../../app/file-policy";
-import { canAccessMap, canWorkspace, getWorkspaceAccessContext, nodeBelongsToAccessibleMap } from "../_lib/collaboration";
+import { canAccessMap, canWorkspace, getWorkspaceAccessContext, nodeBelongsToAccessibleMap, workspaceWriteAllowed } from "../_lib/collaboration";
 
 type FileRow = {
   id: string;
@@ -89,6 +89,7 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   const current = await context();
   if (!current) return Response.json({ error: "Autenticação necessária" }, { status: 401 });
+  if (!workspaceWriteAllowed(current)) return Response.json({ error: "Licença inativa. Os arquivos permanecem disponíveis somente para leitura." }, { status: 402 });
   const fileId = new URL(request.url).searchParams.get("fileId");
   if (!fileId) return Response.json({ error: "Arquivo não informado" }, { status: 400 });
   const row = await env.DB.prepare("SELECT * FROM node_file_records WHERE id = ? AND workspace_id = ? LIMIT 1").bind(fileId, current.workspace.id).first<FileRow>();

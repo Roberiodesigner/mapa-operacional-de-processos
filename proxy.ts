@@ -1,0 +1,33 @@
+import { createServerClient } from "@supabase/ssr";
+import { env } from "cloudflare:workers";
+import { NextResponse, type NextRequest } from "next/server";
+
+export async function proxy(request: NextRequest) {
+  const workerEnv = env as unknown as Record<string, unknown>;
+  const url = (typeof workerEnv.NEXT_PUBLIC_SUPABASE_URL === "string" ? workerEnv.NEXT_PUBLIC_SUPABASE_URL : process.env.NEXT_PUBLIC_SUPABASE_URL)?.trim();
+  const publishableKey = (typeof workerEnv.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY === "string" ? workerEnv.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY : process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY)?.trim();
+  if (!url || !publishableKey) return NextResponse.next({ request });
+
+  let response = NextResponse.next({ request });
+  const supabase = createServerClient(url, publishableKey, {
+    cookies: {
+      getAll() {
+        return request.cookies.getAll();
+      },
+      setAll(cookiesToSet, headersToSet) {
+        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+        response = NextResponse.next({ request });
+        cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
+        Object.entries(headersToSet).forEach(([name, value]) => response.headers.set(name, value));
+      },
+    },
+  });
+
+  // getClaims validates the signed token before protected pages read the cookies.
+  await supabase.auth.getClaims();
+  return response;
+}
+
+export const config = {
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
+};
