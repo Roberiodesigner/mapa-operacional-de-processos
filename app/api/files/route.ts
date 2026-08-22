@@ -1,4 +1,4 @@
-import { env } from "cloudflare:workers";
+import { env } from "@/platform/hostinger-env";
 import { MAX_FILES_PER_NODE, sanitizeFileName, validateUpload } from "../../app/file-policy";
 import { canAccessMap, canWorkspace, getWorkspaceAccessContext, nodeBelongsToAccessibleMap, workspaceWriteAllowed } from "../_lib/collaboration";
 

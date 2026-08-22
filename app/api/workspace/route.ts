@@ -1,4 +1,4 @@
-import { env } from "cloudflare:workers";
+import { env } from "@/platform/hostinger-env";
 import { getChatGPTUser } from "../../chatgpt-auth";
 import { allowedMapIds, canWorkspace, getWorkspaceAccessContext, type WorkspaceAccessContext } from "../_lib/collaboration";
 import { ensureCommercialSchema, ensureWorkspaceLicense, getWorkspaceEntitlement } from "../_lib/commercial";
@@ -186,15 +186,17 @@ export async function POST(request: Request) {
     if (hasDependencyCycle(state.dependencies)) return Response.json({ error: "Dependência circular detectada" }, { status: 409 });
     const workspace = context.workspace;
     const payload = JSON.stringify(state);
-    const result = currentRow
-      ? await env.DB.prepare("UPDATE project_states SET payload = ?, version = version + 1, updated_at = CURRENT_TIMESTAMP WHERE workspace_id = ? AND version = ? RETURNING version, updated_at")
-        .bind(payload, workspace.id, currentRow.version).first<{ version: number; updated_at: string }>()
-      : await env.DB.prepare("INSERT INTO project_states (id, workspace_id, payload, version, updated_at) VALUES (?, ?, ?, 1, CURRENT_TIMESTAMP) ON CONFLICT(workspace_id) DO NOTHING RETURNING version, updated_at")
-        .bind(crypto.randomUUID(), workspace.id, payload).first<{ version: number; updated_at: string }>();
-    if (!result) {
+    const write = currentRow
+      ? await env.DB.prepare("UPDATE project_states SET payload = ?, version = version + 1, updated_at = CURRENT_TIMESTAMP WHERE workspace_id = ? AND version = ?")
+        .bind(payload, workspace.id, currentRow.version).run()
+      : await env.DB.prepare("INSERT IGNORE INTO project_states (id, workspace_id, payload, version, updated_at) VALUES (?, ?, ?, 1, CURRENT_TIMESTAMP)")
+        .bind(crypto.randomUUID(), workspace.id, payload).run();
+    if (!write.meta.changes) {
       const latest = await env.DB.prepare("SELECT version FROM project_states WHERE workspace_id = ? LIMIT 1").bind(workspace.id).first<{ version: number }>();
       return Response.json({ error: "Este mapa foi atualizado por outra pessoa", conflict: true, currentVersion: latest?.version ?? 0 }, { status: 409 });
     }
+    const result = await env.DB.prepare("SELECT version, updated_at FROM project_states WHERE workspace_id = ? LIMIT 1")
+      .bind(workspace.id).first<{ version: number; updated_at: string }>();
     await syncOperationalRecords(workspace.id, state);
     return Response.json({ ok: true, version: result?.version ?? 1, updatedAt: result?.updated_at ?? new Date().toISOString() });
   } catch (error) {

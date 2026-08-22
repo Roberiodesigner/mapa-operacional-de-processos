@@ -1,4 +1,4 @@
-import { env } from "cloudflare:workers";
+import { env } from "@/platform/hostinger-env";
 import { getChatGPTUser } from "../../chatgpt-auth";
 import { roleCan, type CollaborationAction, type MemberRole } from "../../app/collaboration-policy";
 import { deriveWorkspaceEntitlement } from "../../commercial-policy";

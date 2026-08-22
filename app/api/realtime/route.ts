@@ -1,4 +1,4 @@
-import { env } from "cloudflare:workers";
+import { env } from "@/platform/hostinger-env";
 import { canAccessMap, getWorkspaceAccessContext, nodeBelongsToAccessibleMap } from "../_lib/collaboration";
 
 type PresenceRow = { user_email: string; display_name: string; map_id: string; node_id: string; last_seen_at: string };

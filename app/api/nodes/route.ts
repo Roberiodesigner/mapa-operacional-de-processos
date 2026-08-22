@@ -1,4 +1,4 @@
-import { env } from "cloudflare:workers";
+import { env } from "@/platform/hostinger-env";
 import { completionBlockReason } from "../../app/approval-policy";
 import { canAccessMap, getWorkspaceAccessContext } from "../_lib/collaboration";
 

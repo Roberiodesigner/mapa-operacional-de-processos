@@ -1,4 +1,4 @@
-import { env } from "cloudflare:workers";
+import { env } from "@/platform/hostinger-env";
 import { DEFAULT_COMMERCIAL_PLANS, deriveWorkspaceEntitlement, type WorkspaceEntitlement } from "../../commercial-policy";
 
 export type WorkspaceCommercialRow = {

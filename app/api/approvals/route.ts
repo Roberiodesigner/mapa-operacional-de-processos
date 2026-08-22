@@ -1,4 +1,4 @@
-import { env } from "cloudflare:workers";
+import { env } from "@/platform/hostinger-env";
 import { allowedMapIds, canAccessMap, canWorkspace, getWorkspaceAccessContext, workspaceWriteAllowed } from "../_lib/collaboration";
 
 type ApprovalRow = {

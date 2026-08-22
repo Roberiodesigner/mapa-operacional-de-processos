@@ -1,10 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
-import { env } from "cloudflare:workers";
 import { cookies } from "next/headers";
 
 function authEnvironmentValue(key: string) {
-  const workerValue = (env as unknown as Record<string, unknown>)[key];
-  if (typeof workerValue === "string" && workerValue.trim()) return workerValue.trim();
   return process.env[key]?.trim() || "";
 }
 

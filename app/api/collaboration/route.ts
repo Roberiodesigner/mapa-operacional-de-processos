@@ -1,4 +1,4 @@
-import { env } from "cloudflare:workers";
+import { env } from "@/platform/hostinger-env";
 import { normalizeMemberRole, permissionSummary, roleCan, roleLabels, type MemberRole } from "../../app/collaboration-policy";
 import { canWorkspace, getWorkspaceAccessContext } from "../_lib/collaboration";
 

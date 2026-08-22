@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { env } from "cloudflare:workers";
+import { env } from "@/platform/hostinger-env";
 import { DEFAULT_COMMERCIAL_PLANS } from "./commercial-policy";
 import { ensureCommercialSchema } from "./api/_lib/commercial";
 

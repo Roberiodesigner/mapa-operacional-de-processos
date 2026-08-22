@@ -57,10 +57,10 @@ Plataforma visual para transformar processos em execução. Esta versão entrega
 
 ## Arquitetura
 
-- Next.js/Vinext, React, TypeScript e Tailwind CSS;
-- Cloudflare D1 e Drizzle ORM para dados estruturados;
-- Cloudflare R2 para arquivos e evidências privadas;
-- autenticação delegada ao ambiente de hospedagem;
+- Next.js, React, TypeScript e Tailwind CSS em Node.js 22;
+- MySQL da Hostinger para dados estruturados;
+- pasta persistente e privada para arquivos e evidências;
+- autenticação por e-mail com Supabase Auth;
 - rotas públicas em `/` e aplicação protegida em `/app`;
 - API `/api/workspace` com autorização server-side e limites de payload;
 - estado do editor versionado por Workspace;
@@ -68,7 +68,7 @@ Plataforma visual para transformar processos em execução. Esta versão entrega
 
 ## Banco de dados
 
-O schema está em `db/schema.ts` e a migration gerada em `drizzle/`. As tabelas atuais são:
+O schema MySQL idempotente está em `mysql/0000_hostinger.sql` e é aplicado automaticamente antes de cada inicialização. As tabelas atuais são:
 
 - `workspaces`: proprietário, datas do trial e plano;
 - `project_states`: snapshot versionado do editor;
@@ -76,7 +76,7 @@ O schema está em `db/schema.ts` e a migration gerada em `drizzle/`. As tabelas 
 - `node_dependencies`: dependências direcionais;
 - `node_checklist_records` e `node_comment_records`: execução e colaboração;
 - `activity_log_records`: histórico operacional;
-- `node_file_records`: metadados dos arquivos privados armazenados no R2;
+- `node_file_records`: metadados dos arquivos armazenados fora da raiz pública do site;
 - `audit_log_records`: trilha imutável de uploads e exclusões.
 - `approval_records` e `approval_event_records`: solicitações, decisões e histórico de aprovação.
 - `workspace_members` e `map_permission_records`: equipe, papéis e acesso granular por mapa;
@@ -108,8 +108,12 @@ Comandos úteis:
 npm run build
 npm test
 npm run lint
-npm run db:generate
+npm run db:migrate
 ```
+
+## Publicação na Hostinger
+
+A branch `hostinger` é a versão preparada para a hospedagem Node.js. Ela usa MySQL e não altera a branch `main`, que continua sendo a referência da publicação anterior. O roteiro completo está em `HOSTINGER_DEPLOY.md`.
 
 ## Integração Asaas
 

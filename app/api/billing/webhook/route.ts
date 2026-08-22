@@ -1,4 +1,4 @@
-import { env } from "cloudflare:workers";
+import { env } from "@/platform/hostinger-env";
 import { ensureCommercialSchema, recordBillingEvent, runtimeValue, updateLicenseFromProvider } from "../../_lib/commercial";
 import { parseAsaasExternalReference, periodEnd, safeTokenEqual } from "../../_lib/asaas-billing";
 

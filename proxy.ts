@@ -1,11 +1,9 @@
 import { createServerClient } from "@supabase/ssr";
-import { env } from "cloudflare:workers";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function proxy(request: NextRequest) {
-  const workerEnv = env as unknown as Record<string, unknown>;
-  const url = (typeof workerEnv.NEXT_PUBLIC_SUPABASE_URL === "string" ? workerEnv.NEXT_PUBLIC_SUPABASE_URL : process.env.NEXT_PUBLIC_SUPABASE_URL)?.trim();
-  const publishableKey = (typeof workerEnv.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY === "string" ? workerEnv.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY : process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY)?.trim();
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim();
   if (!url || !publishableKey) return NextResponse.next({ request });
 
   let response = NextResponse.next({ request });

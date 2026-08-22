@@ -1,4 +1,4 @@
-import { env } from "cloudflare:workers";
+import { env } from "@/platform/hostinger-env";
 import { normalizeReviewPin, publicReviewNode, visibleReviewNodeIds, type ReviewNodeSource } from "../../app/review-policy";
 import { enforceReviewRateLimit, reviewLinkForToken } from "../_lib/review-links";
 import { workspaceCommercialCanWrite } from "../_lib/commercial";
@@ -83,7 +83,7 @@ export async function GET(request: Request) {
   const token = new URL(request.url).searchParams.get("token") || "";
   try {
     const result = await publicReviewPayload(token);
-    if (!("payload" in result)) return Response.json({ error: result.error }, { status: result.status, headers: responseHeaders() });
+    if (!("payload" in result) || !result.payload) return Response.json({ error: "error" in result ? result.error : "Revisão indisponível" }, { status: result.status, headers: responseHeaders() });
     return Response.json(result.payload, { headers: responseHeaders() });
   } catch {
     return Response.json({ error: "Não foi possível carregar esta revisão" }, { status: 500, headers: responseHeaders() });
@@ -107,7 +107,7 @@ export async function POST(request: Request) {
   if (!content) return Response.json({ error: "Escreva o comentário" }, { status: 400, headers: responseHeaders() });
 
   const payloadResult = await publicReviewPayload(body.token || "");
-  if (!("payload" in payloadResult)) return Response.json({ error: payloadResult.error }, { status: payloadResult.status, headers: responseHeaders() });
+  if (!("payload" in payloadResult) || !payloadResult.payload) return Response.json({ error: "error" in payloadResult ? payloadResult.error : "Revisão indisponível" }, { status: payloadResult.status, headers: responseHeaders() });
   const visibleIds = new Set(payloadResult.payload.nodes.map(node => node.id));
   let nodeId = (body.nodeId || "").trim();
   let parentId: string | null = null;

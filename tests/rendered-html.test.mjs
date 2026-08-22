@@ -15,7 +15,7 @@ test("painel comercial centraliza planos e integração Asaas", async () => {
     readFile(new URL("../app/admin/admin-dashboard.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/api/billing/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/billing/webhook/route.ts", import.meta.url), "utf8"),
-    readFile(new URL("../drizzle/0008_secret_ogun.sql", import.meta.url), "utf8"),
+    readFile(new URL("../mysql/0000_hostinger.sql", import.meta.url), "utf8"),
   ]);
   assert.match(admin, />Integrações</);
   assert.match(admin, /As alterações aparecem automaticamente na página pública/);
@@ -24,20 +24,21 @@ test("painel comercial centraliza planos e integração Asaas", async () => {
   assert.match(billing, /billing_checkout_records/);
   assert.match(webhook, /asaas-access-token/);
   assert.match(webhook, /providerEventId: event\.id/);
-  assert.match(migration, /CREATE TABLE `workspace_licenses`/);
-  assert.match(migration, /CREATE TABLE `billing_checkout_records`/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS workspace_licenses/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS billing_checkout_records/);
 });
 
-test("aplicação usa autenticação e persistência D1", async () => {
-  const [appPage, manifest, migration] = await Promise.all([
+test("aplicação usa autenticação e persistência MySQL na Hostinger", async () => {
+  const [appPage, runtime, migration] = await Promise.all([
     readFile(new URL("../app/app/page.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../.openai/hosting.json", import.meta.url), "utf8"),
-    readFile(new URL("../drizzle/0000_fearless_zodiak.sql", import.meta.url), "utf8"),
+    readFile(new URL("../platform/hostinger-env.ts", import.meta.url), "utf8"),
+    readFile(new URL("../mysql/0000_hostinger.sql", import.meta.url), "utf8"),
   ]);
   assert.match(appPage, /requireChatGPTUser/);
-  assert.equal(JSON.parse(manifest).d1, "DB");
-  assert.match(migration, /CREATE TABLE `workspaces`/);
-  assert.match(migration, /CREATE TABLE `project_states`/);
+  assert.match(runtime, /createPool/);
+  assert.match(runtime, /class MysqlD1Database/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS workspaces/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS project_states/);
 });
 
 test("cliente e administração possuem entradas separadas e a aplicação não expõe atalho administrativo", async () => {
@@ -71,32 +72,33 @@ test("API administrativa exige login e função administrativa no servidor", asy
 });
 
 test("arquivos usam armazenamento privado, autorização e metadados relacionais", async () => {
-  const [manifest, route, migration] = await Promise.all([
-    readFile(new URL("../.openai/hosting.json", import.meta.url), "utf8"),
+  const [bucket, route, migration] = await Promise.all([
+    readFile(new URL("../platform/hostinger-env.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/files/route.ts", import.meta.url), "utf8"),
-    readFile(new URL("../drizzle/0003_furry_blade.sql", import.meta.url), "utf8"),
+    readFile(new URL("../mysql/0000_hostinger.sql", import.meta.url), "utf8"),
   ]);
-  assert.equal(JSON.parse(manifest).r2, "BUCKET");
+  assert.match(bucket, /class PrivateFileBucket/);
+  assert.match(bucket, /PRIVATE_UPLOADS_PATH/);
   assert.match(route, /getWorkspaceAccessContext/);
   assert.match(route, /workspace_id = \?/);
   assert.match(route, /env\.BUCKET\.put/);
   assert.match(route, /cache-control.*private, no-store/);
-  assert.match(migration, /CREATE TABLE `node_file_records`/);
-  assert.match(migration, /CREATE TABLE `audit_log_records`/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS node_file_records/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS audit_log_records/);
 });
 
 test("aprovações possuem autorização, histórico e decisões persistentes", async () => {
   const [route, migration, app] = await Promise.all([
     readFile(new URL("../app/api/approvals/route.ts", import.meta.url), "utf8"),
-    readFile(new URL("../drizzle/0004_flat_carlie_cooper.sql", import.meta.url), "utf8"),
+    readFile(new URL("../mysql/0000_hostinger.sql", import.meta.url), "utf8"),
     readFile(new URL("../app/app/workspace-app.tsx", import.meta.url), "utf8"),
   ]);
   assert.match(route, /getWorkspaceAccessContext/);
   assert.match(route, /workspace_id = \?/);
   assert.match(route, /approval_changes_requested/);
   assert.match(route, /Anexe a evidência obrigatória/);
-  assert.match(migration, /CREATE TABLE `approval_records`/);
-  assert.match(migration, /CREATE TABLE `approval_event_records`/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS approval_records/);
+  assert.match(migration, /CREATE TABLE IF NOT EXISTS approval_event_records/);
   assert.match(app, /PORTAL DO CLIENTE · VISÃO RESTRITA/);
   assert.match(app, /dependências recalculadas/);
 });

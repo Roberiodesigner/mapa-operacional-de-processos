@@ -1,4 +1,4 @@
-import { env } from "cloudflare:workers";
+import { env } from "@/platform/hostinger-env";
 import { reviewDurationDays, reviewLinkIsUsable } from "../../app/review-policy";
 import { canAccessMap, getWorkspaceAccessContext } from "../_lib/collaboration";
 import { createReviewToken, ensureReviewSchema, hashReviewToken, type ReviewLinkRow } from "../_lib/review-links";

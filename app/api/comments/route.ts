@@ -1,4 +1,4 @@
-import { env } from "cloudflare:workers";
+import { env } from "@/platform/hostinger-env";
 import { canAccessMap, canWorkspace, getWorkspaceAccessContext, nodeBelongsToAccessibleMap, workspaceWriteAllowed } from "../_lib/collaboration";
 import { ensureReviewSchema } from "../_lib/review-links";
 

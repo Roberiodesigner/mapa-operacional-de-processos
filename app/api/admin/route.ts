@@ -1,4 +1,4 @@
-import { env } from "cloudflare:workers";
+import { env } from "@/platform/hostinger-env";
 import { getChatGPTUser } from "../../chatgpt-auth";
 import { asaasApiConfigured, asaasBillingConfigured, asaasEnvironment, asaasWebhookConfigured, ensureCommercialSchema, isPlatformAdmin, recordBillingEvent } from "../_lib/commercial";
 import { asaasRequest } from "../_lib/asaas-billing";
@@ -149,7 +149,7 @@ export async function PATCH(request: Request) {
       return Response.json({ ok: true, message: "Plano salvo e sincronizado" });
     }
     if (body.action === "test_asaas") {
-      if (!asaasApiConfigured()) return Response.json({ error: "Adicione ASAAS_API_KEY nas configurações seguras do Site antes de testar" }, { status: 503 });
+      if (!asaasApiConfigured()) return Response.json({ error: "Adicione ASAAS_API_KEY nas variáveis seguras da hospedagem antes de testar" }, { status: 503 });
       await asaasRequest("/customers?limit=1");
       await recordBillingEvent({ provider: "asaas", eventType: "admin.integration_tested", status: "success", details: { environment: asaasEnvironment(), actor: auth.user.email.toLowerCase() } });
       return Response.json({ ok: true, message: `Conexão Asaas (${asaasEnvironment() === "production" ? "produção" : "sandbox"}) validada` });

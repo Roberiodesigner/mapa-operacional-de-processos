@@ -1,4 +1,4 @@
-import { env } from "cloudflare:workers";
+import { env } from "@/platform/hostinger-env";
 import { reviewLinkIsUsable } from "../../app/review-policy";
 
 export type ReviewLinkRow = {

@@ -1,4 +1,4 @@
-import { env } from "cloudflare:workers";
+import { env } from "@/platform/hostinger-env";
 import { getWorkspaceAccessContext } from "../_lib/collaboration";
 import { asaasBillingConfigured, ensureCommercialSchema, getWorkspaceEntitlement, recordBillingEvent } from "../_lib/commercial";
 import { asaasCheckoutUrl, asaasExternalReference, asaasRequest } from "../_lib/asaas-billing";
