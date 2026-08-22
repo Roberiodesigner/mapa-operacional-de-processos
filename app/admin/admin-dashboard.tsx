@@ -13,16 +13,22 @@ const date=(value:string|null)=>value?new Date(value).toLocaleDateString("pt-BR"
 const futureDate=(days:number)=>new Date(new Date().getTime()+days*86_400_000).toISOString();
 const statusText:Record<string,string>={trialing:"Teste",active:"Ativa",past_due:"Pendente",canceled:"Cancelada",suspended:"Suspensa",expired:"Expirada",incomplete:"Incompleta"};
 
+async function apiBody(response:Response){
+  const text=await response.text();
+  if(!text)throw new Error(`O servidor respondeu sem dados (${response.status}). Tente novamente em instantes.`);
+  try{return JSON.parse(text) as Record<string,unknown>}catch{throw new Error(`O servidor devolveu uma resposta inválida (${response.status}).`)}
+}
+
 export default function AdminDashboard({initialAdmin}:{initialAdmin:{name:string;email:string}}){
   const [data,setData]=useState<AdminData|null>(null),[tab,setTab]=useState<"overview"|"customers"|"licenses"|"settings">("overview"),[settingsTab,setSettingsTab]=useState<"plans"|"integrations"|"security">("plans"),[search,setSearch]=useState(""),[busy,setBusy]=useState(""),[toast,setToast]=useState(""),[error,setError]=useState("");
-  const load=()=>fetch("/api/admin",{cache:"no-store"}).then(async response=>{const body=await response.json();if(!response.ok)throw new Error(body.error);setData(body)}).catch(reason=>setError(reason instanceof Error?reason.message:"Não foi possível carregar o painel"));
+  const load=()=>{setError("");return fetch("/api/admin",{cache:"no-store"}).then(async response=>{const body=await apiBody(response);if(!response.ok)throw new Error(String(body.error||"Não foi possível carregar o painel"));setData(body as unknown as AdminData)}).catch(reason=>setError(reason instanceof Error?reason.message:"Não foi possível carregar o painel"))};
   useEffect(()=>{load()},[]);
-  const action=async(payload:Record<string,unknown>,label:string)=>{setBusy(label);setError("");try{const response=await fetch("/api/admin",{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});const body=await response.json();if(!response.ok)throw new Error(body.error);setToast(body.message||"Alteração concluída");await load()}catch(reason){setError(reason instanceof Error?reason.message:"Não foi possível concluir a ação")}finally{setBusy("")}};
+  const action=async(payload:Record<string,unknown>,label:string)=>{setBusy(label);setError("");try{const response=await fetch("/api/admin",{method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});const body=await apiBody(response);if(!response.ok)throw new Error(String(body.error||"Não foi possível concluir a ação"));setToast(String(body.message||"Alteração concluída"));await load()}catch(reason){setError(reason instanceof Error?reason.message:"Não foi possível concluir a ação")}finally{setBusy("")}};
   const filtered=useMemo(()=>data?.workspaces.filter(item=>(item.name+item.owner_email+item.effective_status).toLowerCase().includes(search.toLowerCase()))||[],[data,search]);
   return <main className="admin-shell"><aside className="admin-sidebar"><Link className="admin-brand" href="/"><span>MO</span><div><b>Mapa Operacional</b><small>SUPER ADMIN</small></div></Link><nav><button className={tab==="overview"?"active":""} onClick={()=>setTab("overview")}><i>⌂</i>Visão geral</button><button className={tab==="customers"?"active":""} onClick={()=>setTab("customers")}><i>♙</i>Clientes</button><button className={tab==="licenses"?"active":""} onClick={()=>setTab("licenses")}><i>◇</i>Licenças</button><button className={tab==="settings"?"active":""} onClick={()=>setTab("settings")}><i>⚙</i>Configurações</button></nav><footer><a href="/api/auth/logout">Sair da administração</a></footer></aside>
     <section className="admin-main"><header className="admin-topbar"><div><span>Painel do proprietário</span><b>{tab==="overview"?"Visão geral":tab==="customers"?"Clientes":tab==="licenses"?"Licenças":"Configurações"}</b></div><aside><span>{initialAdmin.name.slice(0,1).toUpperCase()}</span><div><b>{initialAdmin.name}</b><small>{initialAdmin.email}</small></div></aside></header>
       {toast&&<button className="admin-toast" onClick={()=>setToast("")}>✓ {toast}</button>}{error&&<button className="admin-toast error" onClick={()=>setError("")}>! {error}</button>}
-      {!data?<div className="admin-loading">Preparando o painel administrativo...</div>:<div className="admin-content">
+      {!data?<div className="admin-loading">{error?<><b>O painel não conseguiu carregar.</b><button onClick={load}>Tentar novamente</button></>:"Preparando o painel administrativo..."}</div>:<div className="admin-content">
         {tab==="overview"&&<Overview data={data} onCustomers={()=>setTab("customers")} onSettings={()=>setTab("settings")}/>} 
         {tab==="customers"&&<Customers rows={filtered} search={search} setSearch={setSearch} busy={busy} onAction={action}/>} 
         {tab==="licenses"&&<Licenses rows={filtered} search={search} setSearch={setSearch} busy={busy} onAction={action}/>} 

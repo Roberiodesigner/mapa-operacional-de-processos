@@ -76,6 +76,18 @@ test("API administrativa exige login e função administrativa no servidor", asy
     "o e-mail administrativo configurado deve ser autorizado antes da consulta ao MySQL");
 });
 
+test("painel administrativo trata respostas vazias e logout usa a origem pública", async () => {
+  const [dashboard, logout, adminRoute] = await Promise.all([
+    readFile(new URL("../app/admin/admin-dashboard.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/auth/logout/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/admin/route.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(dashboard, /response\.text\(\)/);
+  assert.match(dashboard, /Tentar novamente/);
+  assert.match(logout, /publicOrigin\(request\)/);
+  assert.match(adminRoute, /publicOrigin\(request\).*api\/billing\/webhook/s);
+});
+
 test("arquivos usam armazenamento privado, autorização e metadados relacionais", async () => {
   const [bucket, route, migration] = await Promise.all([
     readFile(new URL("../platform/hostinger-env.ts", import.meta.url), "utf8"),

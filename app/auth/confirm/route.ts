@@ -2,12 +2,13 @@ import { NextResponse } from "next/server";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { safeReturnTo } from "../../auth-policy";
 import { createSupabaseServerClient } from "../../supabase/server";
+import { publicOrigin } from "../../public-origin";
 
 const allowedOtpTypes = new Set<EmailOtpType>(["signup", "recovery", "email", "email_change"]);
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const origin = url.origin;
+  const origin = publicOrigin(request);
   const next = safeReturnTo(url.searchParams.get("next"), "/app");
   const supabase = await createSupabaseServerClient();
   if (!supabase) return NextResponse.redirect(`${origin}/login?erro=configuracao`);

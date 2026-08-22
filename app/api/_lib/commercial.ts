@@ -1,4 +1,4 @@
-import { env } from "@/platform/hostinger-env";
+import { ensureHostingerDatabaseSchema, env } from "@/platform/hostinger-env";
 import { DEFAULT_COMMERCIAL_PLANS, deriveWorkspaceEntitlement, type WorkspaceEntitlement } from "../../commercial-policy";
 
 export type WorkspaceCommercialRow = {
@@ -36,6 +36,7 @@ export function runtimeValue(key: string) {
 export async function ensureCommercialSchema() {
   if (schemaReady) return schemaReady;
   schemaReady = (async () => {
+    await ensureHostingerDatabaseSchema();
     await env.DB.batch([
       env.DB.prepare("CREATE TABLE IF NOT EXISTS workspaces (id TEXT PRIMARY KEY NOT NULL, owner_email TEXT NOT NULL UNIQUE, name TEXT NOT NULL, trial_started_at TEXT NOT NULL, trial_ends_at TEXT NOT NULL, plan TEXT NOT NULL DEFAULT 'trial', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"),
       env.DB.prepare("CREATE TABLE IF NOT EXISTS platform_admins (email TEXT PRIMARY KEY NOT NULL, role TEXT NOT NULL DEFAULT 'super_admin', status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"),

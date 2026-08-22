@@ -3,6 +3,7 @@ import { getChatGPTUser } from "../../chatgpt-auth";
 import { asaasApiConfigured, asaasBillingConfigured, asaasEnvironment, asaasWebhookConfigured, ensureCommercialSchema, isPlatformAdmin, recordBillingEvent } from "../_lib/commercial";
 import { asaasRequest } from "../_lib/asaas-billing";
 import { normalizeCommercialStatus } from "../../commercial-policy";
+import { publicOrigin } from "../../public-origin";
 
 type AdminWorkspaceRow = {
   id: string;
@@ -30,8 +31,8 @@ async function requireAdmin() {
 export async function GET(request: Request) {
   const auth = await requireAdmin();
   if (auth.error) return auth.error;
-  await ensureCommercialSchema();
   try {
+    await ensureCommercialSchema();
     const [workspaces, plans, events] = await Promise.all([
       env.DB.prepare("SELECT w.id, w.name, w.owner_email, w.created_at, w.trial_ends_at, w.plan AS workspace_plan, l.status AS license_status, l.plan_code, l.provider, l.current_period_ends_at, (SELECT COUNT(*) FROM workspace_members m WHERE m.workspace_id = w.id AND m.status = 'active') AS member_count, (SELECT COUNT(*) FROM map_records mr WHERE mr.workspace_id = w.id) AS map_count, (SELECT COUNT(*) FROM node_records nr WHERE nr.workspace_id = w.id) AS node_count FROM workspaces w LEFT JOIN workspace_licenses l ON l.workspace_id = w.id ORDER BY w.created_at DESC LIMIT 500").all<AdminWorkspaceRow>(),
       env.DB.prepare("SELECT code, name, description, price_cents, currency, billing_interval, provider_price_id, trial_days, active, highlighted, updated_at FROM billing_plans ORDER BY highlighted DESC, price_cents ASC").all(),
@@ -72,7 +73,7 @@ export async function GET(request: Request) {
           environment: asaasEnvironment(),
           apiKeyConfigured: asaasApiConfigured(),
           webhookTokenConfigured: asaasWebhookConfigured(),
-          webhookUrl: `${new URL(request.url).origin}/api/billing/webhook`,
+          webhookUrl: `${publicOrigin(request)}/api/billing/webhook`,
         },
       },
     });
@@ -84,8 +85,8 @@ export async function GET(request: Request) {
 export async function PATCH(request: Request) {
   const auth = await requireAdmin();
   if (auth.error) return auth.error;
-  await ensureCommercialSchema();
   try {
+    await ensureCommercialSchema();
     const body = await request.json() as {
       action?: string;
       workspaceId?: string;

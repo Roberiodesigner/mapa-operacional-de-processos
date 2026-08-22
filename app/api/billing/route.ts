@@ -2,6 +2,7 @@ import { env } from "@/platform/hostinger-env";
 import { getWorkspaceAccessContext } from "../_lib/collaboration";
 import { asaasBillingConfigured, ensureCommercialSchema, getWorkspaceEntitlement, recordBillingEvent } from "../_lib/commercial";
 import { asaasCheckoutUrl, asaasExternalReference, asaasRequest } from "../_lib/asaas-billing";
+import { publicOrigin } from "../../public-origin";
 
 type PlanRow = { code: string; name: string; description: string; price_cents: number; currency: string; billing_interval: "month" | "year"; trial_days: number; active: number; highlighted: number };
 
@@ -54,7 +55,7 @@ export async function POST(request: Request) {
       .bind(context.workspace.id, plan.code).first<{ id: string }>();
     if (reusable?.id) return Response.json({ url: asaasCheckoutUrl(reusable.id), reused: true });
 
-    const origin = new URL(request.url).origin;
+    const origin = publicOrigin(request);
     const now = new Date();
     const nextDueDate = now.toISOString().slice(0, 19).replace("T", " ");
     const checkout = await asaasRequest<{ id?: string }>("/checkouts", {

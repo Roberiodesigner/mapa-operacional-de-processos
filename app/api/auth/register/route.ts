@@ -1,5 +1,6 @@
 import { normalizeEmail, validEmail, validPassword } from "../../../auth-policy";
 import { createSupabaseServerClient } from "../../../supabase/server";
+import { publicOrigin } from "../../../public-origin";
 
 export async function POST(request: Request) {
   const supabase = await createSupabaseServerClient();
@@ -16,7 +17,7 @@ export async function POST(request: Request) {
 
   const plan = typeof body?.plan === "string" && /^[a-z0-9-]{2,40}$/.test(body.plan) ? body.plan : "";
   const destination = plan ? `/conta?plan=${encodeURIComponent(plan)}` : "/app";
-  const origin = new URL(request.url).origin;
+  const origin = publicOrigin(request);
   const { data, error } = await supabase.auth.signUp({
     email,
     password,

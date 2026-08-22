@@ -57,3 +57,11 @@ test("variáveis de produção são documentadas sem credenciais reais", async (
   }
   assert.doesNotMatch(example, /sk_live_|SUPABASE_SERVICE_ROLE\s*=|mysql:\/\/.+@/);
 });
+
+test("runtime aplica a migração MySQL mesmo quando a hospedagem inicia o Next diretamente", async () => {
+  const runtime = await readFile(new URL("../platform/hostinger-env.ts", import.meta.url), "utf8");
+  const commercial = await readFile(new URL("../app/api/_lib/commercial.ts", import.meta.url), "utf8");
+  assert.match(runtime, /ensureHostingerDatabaseSchema/);
+  assert.match(runtime, /mysql.*0000_hostinger\.sql/);
+  assert.match(commercial, /await ensureHostingerDatabaseSchema\(\)/);
+});

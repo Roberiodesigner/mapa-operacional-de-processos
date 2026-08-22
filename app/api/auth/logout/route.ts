@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { createSupabaseServerClient } from "../../../supabase/server";
+import { publicOrigin } from "../../../public-origin";
 
 export async function GET(request: Request) {
-  const origin = new URL(request.url).origin;
+  const origin = publicOrigin(request);
   const user = await getChatGPTUser();
   if (user?.authProvider === "chatgpt") {
     return NextResponse.redirect(`${origin}/signout-with-chatgpt?return_to=${encodeURIComponent("/")}`);

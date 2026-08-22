@@ -29,14 +29,29 @@ function databaseConfig() {
     dateStrings: true as const,
     charset: "utf8mb4",
     timezone: "Z",
+    multipleStatements: true,
   };
 }
 
 let pool: Pool | null = null;
+let schemaMigration: Promise<void> | null = null;
 
 export function getMysqlPool() {
   if (!pool) pool = createPool(databaseConfig());
   return pool;
+}
+
+export function ensureHostingerDatabaseSchema() {
+  if (schemaMigration) return schemaMigration;
+  schemaMigration = (async () => {
+    const migrationPath = path.join(process.cwd(), "mysql", "0000_hostinger.sql");
+    const sql = await fs.readFile(migrationPath, "utf8");
+    await getMysqlPool().query(sql);
+  })().catch(error => {
+    schemaMigration = null;
+    throw error;
+  });
+  return schemaMigration;
 }
 
 function normalizeParameter(value: unknown) {
