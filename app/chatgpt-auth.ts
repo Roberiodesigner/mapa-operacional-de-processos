@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createSupabaseServerClient, isSupabaseAuthConfigured } from "./supabase/server";
 
 export type ChatGPTUser = {
+  id: string | null;
   displayName: string;
   email: string;
   fullName: string | null;
@@ -25,6 +26,7 @@ export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
     if (!error && user?.email) {
       const fullName = typeof user.user_metadata?.full_name === "string" ? user.user_metadata.full_name.trim() : "";
       return {
+        id: user.id,
         displayName: fullName || user.email,
         email: user.email.toLowerCase(),
         fullName: fullName || null,
@@ -45,6 +47,7 @@ export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
       : null;
 
   return {
+    id: null,
     displayName: fullName ?? email,
     email,
     fullName,

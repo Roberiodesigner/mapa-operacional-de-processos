@@ -1,37 +1,38 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { translateSqliteQuery } from "../platform/hostinger-env.ts";
+import { translatePostgresCompatibilityQuery } from "../platform/hostinger-env.ts";
 
-test("runtime da Hostinger usa Next.js, Node e MySQL sem dependências Cloudflare", async () => {
+test("runtime da Hostinger usa Next.js, Node e Postgres sem dependências Cloudflare ou MySQL", async () => {
   const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
   assert.equal(packageJson.scripts.dev, "next dev");
   assert.equal(packageJson.scripts.build, "next build");
-  assert.match(packageJson.scripts.start, /migrate-mysql\.mjs/);
-  assert.equal(packageJson.dependencies.mysql2, "3.14.4");
+  assert.match(packageJson.scripts.start, /^next start/);
+  assert.equal(packageJson.dependencies.postgres, "3.4.9");
+  assert.equal(packageJson.dependencies.mysql2, undefined);
   assert.equal(packageJson.devDependencies.vinext, undefined);
   assert.equal(packageJson.devDependencies.wrangler, undefined);
   assert.equal(packageJson.devDependencies["@cloudflare/vite-plugin"], undefined);
 });
 
-test("camada de compatibilidade converte consultas SQLite usadas pela aplicação", () => {
+test("camada Postgres converte placeholders e compatibilidade legada", () => {
   assert.equal(
-    translateSqliteQuery("INSERT OR IGNORE INTO workspaces (id) VALUES (?)").sql,
-    "INSERT IGNORE INTO workspaces (id) VALUES (?)",
+    translatePostgresCompatibilityQuery("INSERT OR IGNORE INTO workspaces (id) VALUES (?)").sql,
+    "INSERT INTO workspaces (id) VALUES ($1) ON CONFLICT DO NOTHING",
   );
   assert.match(
-    translateSqliteQuery("SELECT id FROM workspaces WHERE created_at >= datetime('now', '-60 minutes')").sql,
-    /DATE_SUB\(CURRENT_TIMESTAMP, INTERVAL 60 MINUTE\)/,
+    translatePostgresCompatibilityQuery("SELECT id FROM workspaces WHERE created_at >= datetime('now', '-60 minutes')").sql,
+    /CURRENT_TIMESTAMP - INTERVAL '60 minutes'/,
   );
-  assert.match(
-    translateSqliteQuery("INSERT INTO billing_plans (code, name) VALUES (?, ?) ON CONFLICT(code) DO UPDATE SET name = excluded.name").sql,
-    /ON DUPLICATE KEY UPDATE name = VALUES\(name\)/,
+  assert.equal(
+    translatePostgresCompatibilityQuery("INSERT INTO billing_plans (code, name) VALUES (?, ?) ON CONFLICT(code) DO UPDATE SET name = excluded.name").sql,
+    "INSERT INTO billing_plans (code, name) VALUES ($1, $2) ON CONFLICT(code) DO UPDATE SET name = excluded.name",
   );
-  assert.equal(translateSqliteQuery("CREATE TABLE ignored (id TEXT)").schemaOnly, true);
+  assert.equal(translatePostgresCompatibilityQuery("CREATE TABLE ignored (id TEXT)").schemaOnly, true);
 });
 
-test("migração cobre dados, administração, cobrança e revisão pública", async () => {
-  const migration = await readFile(new URL("../mysql/0000_hostinger.sql", import.meta.url), "utf8");
+test("SQL Supabase cobre dados, administração, cobrança, revisão, Storage e RLS", async () => {
+  const schema = await readFile(new URL("../supabase/schema.sql", import.meta.url), "utf8");
   for (const table of [
     "workspaces",
     "platform_admins",
@@ -45,23 +46,38 @@ test("migração cobre dados, administração, cobrança e revisão pública", a
     "workspace_members",
     "review_link_records",
     "review_comment_markers",
-  ]) assert.match(migration, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}`));
-  assert.match(migration, /ENGINE=InnoDB/);
-  assert.match(migration, /utf8mb4_unicode_ci/);
+  ]) assert.match(schema, new RegExp(`create table if not exists public\\.${table}`, "i"));
+  assert.match(schema, /enable row level security/i);
+  assert.match(schema, /private\.has_workspace_access/i);
+  assert.match(schema, /insert into storage\.buckets/i);
+  assert.match(schema, /mapa-operacional-private/);
 });
 
 test("variáveis de produção são documentadas sem credenciais reais", async () => {
   const example = await readFile(new URL("../.env.example", import.meta.url), "utf8");
-  for (const key of ["DB_HOST", "DB_PORT", "DB_USER", "DB_PASSWORD", "DB_NAME", "PRIVATE_UPLOADS_PATH"]) {
-    assert.match(example, new RegExp(`^${key}=`, "m"));
+  for (const key of [
+    "NEXT_PUBLIC_SUPABASE_URL",
+    "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
+    "DATABASE_URL",
+    "DATABASE_POOL_SIZE",
+    "SUPABASE_STORAGE_BUCKET",
+  ]) assert.match(example, new RegExp(`^${key}=`, "m"));
+  for (const removed of ["DB_HOST", "DB_USER", "DB_PASSWORD", "DB_NAME", "PRIVATE_UPLOADS_PATH"]) {
+    assert.doesNotMatch(example, new RegExp(`^${removed}=`, "m"));
   }
-  assert.doesNotMatch(example, /sk_live_|SUPABASE_SERVICE_ROLE\s*=|mysql:\/\/.+@/);
+  assert.doesNotMatch(example, /sk_live_|sb_secret_|SUPABASE_SERVICE_ROLE_KEY=/);
 });
 
-test("runtime aplica a migração MySQL mesmo quando a hospedagem inicia o Next diretamente", async () => {
-  const runtime = await readFile(new URL("../platform/hostinger-env.ts", import.meta.url), "utf8");
-  const commercial = await readFile(new URL("../app/api/_lib/commercial.ts", import.meta.url), "utf8");
-  assert.match(runtime, /ensureHostingerDatabaseSchema/);
-  assert.match(runtime, /mysql.*0000_hostinger\.sql/);
-  assert.match(commercial, /await ensureHostingerDatabaseSchema\(\)/);
+test("Drizzle está configurado para PostgreSQL e Postgres.js", async () => {
+  const [config, db, runtime] = await Promise.all([
+    readFile(new URL("../drizzle.config.ts", import.meta.url), "utf8"),
+    readFile(new URL("../db/index.ts", import.meta.url), "utf8"),
+    readFile(new URL("../platform/hostinger-env.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(config, /dialect: "postgresql"/);
+  assert.match(config, /DATABASE_URL/);
+  assert.match(db, /drizzle-orm\/postgres-js/);
+  assert.match(runtime, /prepare: false/);
+  assert.match(runtime, /ssl: "require"/);
+  assert.doesNotMatch(runtime, /mysql2|cloudflare:workers/);
 });

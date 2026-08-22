@@ -4,7 +4,7 @@ import { asaasBillingConfigured, ensureCommercialSchema, getWorkspaceEntitlement
 import { asaasCheckoutUrl, asaasExternalReference, asaasRequest } from "../_lib/asaas-billing";
 import { publicOrigin } from "../../public-origin";
 
-type PlanRow = { code: string; name: string; description: string; price_cents: number; currency: string; billing_interval: "month" | "year"; trial_days: number; active: number; highlighted: number };
+type PlanRow = { code: string; name: string; description: string; price_cents: number; currency: string; billing_interval: "month" | "year"; trial_days: number; active: boolean; highlighted: boolean };
 
 export async function GET() {
   const context = await getWorkspaceAccessContext();
@@ -12,7 +12,7 @@ export async function GET() {
   try {
     await ensureCommercialSchema();
     const commercial = await getWorkspaceEntitlement(context.workspace);
-    const plans = await env.DB.prepare("SELECT code, name, description, price_cents, currency, billing_interval, trial_days, active, highlighted FROM billing_plans WHERE active = 1 ORDER BY highlighted DESC, price_cents ASC").all<PlanRow>();
+    const plans = await env.DB.prepare("SELECT code, name, description, price_cents, currency, billing_interval, trial_days, active, highlighted FROM billing_plans WHERE active = TRUE ORDER BY highlighted DESC, price_cents ASC").all<PlanRow>();
     return Response.json({
       workspace: { id: context.workspace.id, name: context.workspace.name, ownerEmail: context.workspace.owner_email },
       canManageBilling: context.role === "owner",
@@ -45,7 +45,7 @@ export async function POST(request: Request) {
     if (!asaasBillingConfigured()) return Response.json({ error: "O checkout Asaas está preparado, mas a integração ainda precisa ser conectada pelo administrador", configurationRequired: true }, { status: 503 });
 
     const [plan, commercial] = await Promise.all([
-      env.DB.prepare("SELECT code, name, description, price_cents, currency, billing_interval, trial_days, active, highlighted FROM billing_plans WHERE code = ? AND active = 1 LIMIT 1").bind(body.planCode).first<PlanRow>(),
+      env.DB.prepare("SELECT code, name, description, price_cents, currency, billing_interval, trial_days, active, highlighted FROM billing_plans WHERE code = ? AND active = TRUE LIMIT 1").bind(body.planCode).first<PlanRow>(),
       getWorkspaceEntitlement(context.workspace),
     ]);
     if (!plan) return Response.json({ error: "Plano indisponível" }, { status: 404 });

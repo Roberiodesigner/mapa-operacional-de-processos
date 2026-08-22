@@ -3,7 +3,7 @@ import { getChatGPTUser } from "../../chatgpt-auth";
 import { allowedMapIds, canWorkspace, getWorkspaceAccessContext, type WorkspaceAccessContext } from "../_lib/collaboration";
 import { ensureCommercialSchema, ensureWorkspaceLicense, getWorkspaceEntitlement } from "../_lib/commercial";
 
-type WorkspaceRow = { id: string; name: string; owner_email: string; trial_started_at: string; trial_ends_at: string; plan: string };
+type WorkspaceRow = { id: string; name: string; owner_email: string; owner_user_id?: string | null; trial_started_at: string; trial_ends_at: string; plan: string };
 type StateRow = { payload: string; version: number; updated_at: string };
 
 function addDays(date: Date, days: number) {
@@ -48,24 +48,31 @@ async function ensureSchema() {
   ]);
 }
 
-async function workspaceFor(email: string, displayName: string) {
+async function workspaceFor(user: { id: string | null; email: string; displayName: string }) {
   await ensureSchema();
   await ensureCommercialSchema();
-  const existing = await env.DB.prepare("SELECT id, name, owner_email, trial_started_at, trial_ends_at, plan FROM workspaces WHERE lower(owner_email) = ? LIMIT 1").bind(email.toLowerCase()).first<WorkspaceRow>();
-  if (existing) { await ensureWorkspaceLicense(existing); return existing; }
+  const existing = await env.DB.prepare("SELECT id, name, owner_email, owner_user_id, trial_started_at, trial_ends_at, plan FROM workspaces WHERE owner_user_id = ? OR lower(owner_email) = ? LIMIT 1").bind(user.id, user.email.toLowerCase()).first<WorkspaceRow>();
+  if (existing) {
+    if (user.id && !existing.owner_user_id) {
+      await env.DB.prepare("UPDATE workspaces SET owner_user_id = ? WHERE id = ? AND owner_user_id IS NULL").bind(user.id, existing.id).run();
+      existing.owner_user_id = user.id;
+    }
+    await ensureWorkspaceLicense(existing);
+    return existing;
+  }
   const now = new Date();
-  const workspace: WorkspaceRow = { id: crypto.randomUUID(), name: `${displayName.split(" ")[0] || "Meu"} Workspace`, owner_email: email.toLowerCase(), trial_started_at: now.toISOString(), trial_ends_at: addDays(now, 7).toISOString(), plan: "trial" };
-  await env.DB.prepare("INSERT INTO workspaces (id, owner_email, name, trial_started_at, trial_ends_at, plan) VALUES (?, ?, ?, ?, ?, ?)")
-    .bind(workspace.id, email, workspace.name, workspace.trial_started_at, workspace.trial_ends_at, workspace.plan).run();
+  const workspace: WorkspaceRow = { id: crypto.randomUUID(), name: `${user.displayName.split(" ")[0] || "Meu"} Workspace`, owner_email: user.email.toLowerCase(), owner_user_id: user.id, trial_started_at: now.toISOString(), trial_ends_at: addDays(now, 7).toISOString(), plan: "trial" };
+  await env.DB.prepare("INSERT INTO workspaces (id, owner_user_id, owner_email, name, trial_started_at, trial_ends_at, plan) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .bind(workspace.id, user.id, user.email, workspace.name, workspace.trial_started_at, workspace.trial_ends_at, workspace.plan).run();
   await ensureWorkspaceLicense(workspace);
   return workspace;
 }
 
-async function resolveContext(user: { email: string; displayName: string }): Promise<WorkspaceAccessContext> {
+async function resolveContext(user: { id: string | null; email: string; displayName: string }): Promise<WorkspaceAccessContext> {
   await ensureSchema();
   const existing = await getWorkspaceAccessContext();
   if (existing) return existing;
-  const workspace = await workspaceFor(user.email, user.displayName);
+  const workspace = await workspaceFor(user);
   const commercial = await getWorkspaceEntitlement(workspace);
   return { user, workspace, memberId: null, role: "owner", allMaps: true, commercialCanWrite: commercial.entitlement.canEdit };
 }
@@ -134,10 +141,10 @@ async function syncOperationalRecords(workspaceId: string, state: PersistedState
     env.DB.prepare("DELETE FROM activity_log_records WHERE workspace_id = ?").bind(workspaceId),
   ]);
   const statements: ReturnType<typeof env.DB.prepare>[] = [];
-  state.maps.forEach(map => statements.push(env.DB.prepare("INSERT INTO map_records (storage_id, workspace_id, map_id, title, favorite, archived, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(`${workspaceId}:${map.id}`, workspaceId, map.id, map.title.slice(0, 240), map.favorite ? 1 : 0, map.archived ? 1 : 0, map.updatedAt || new Date().toISOString())));
+  state.maps.forEach(map => statements.push(env.DB.prepare("INSERT INTO map_records (storage_id, workspace_id, map_id, title, favorite, archived, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(`${workspaceId}:${map.id}`, workspaceId, map.id, map.title.slice(0, 240), Boolean(map.favorite), Boolean(map.archived), map.updatedAt || new Date().toISOString())));
   state.nodes.forEach(node => {
-    statements.push(env.DB.prepare("INSERT INTO node_records (storage_id, workspace_id, node_id, map_id, parent_id, title, description, type, status, priority, assignee, start, due, progress, blocked_reason, info, link, evidence_required, evidence, approval_required, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)").bind(`${workspaceId}:${node.id}`, workspaceId, node.id, node.mapId, node.parentId, node.title.slice(0, 300), (node.description || "").slice(0, 4000), node.type, node.status, node.priority, node.assignee || "", node.start || "", node.due || "", Math.max(0, Math.min(100, Number(node.progress) || 0)), node.blockedReason || "", (node.info || "").slice(0, 4000), (node.link || "").slice(0, 2000), node.evidenceRequired ? 1 : 0, (node.evidence || "").slice(0, 2000), node.approvalRequired ? 1 : 0));
-    (node.checklist ?? []).forEach((item, position) => statements.push(env.DB.prepare("INSERT INTO node_checklist_records (storage_id, workspace_id, checklist_id, node_id, text, done, position) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(`${workspaceId}:${node.id}:${item.id}`, workspaceId, item.id, node.id, item.text.slice(0, 500), item.done ? 1 : 0, position)));
+    statements.push(env.DB.prepare("INSERT INTO node_records (storage_id, workspace_id, node_id, map_id, parent_id, title, description, type, status, priority, assignee, start, due, progress, blocked_reason, info, link, evidence_required, evidence, approval_required, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)").bind(`${workspaceId}:${node.id}`, workspaceId, node.id, node.mapId, node.parentId, node.title.slice(0, 300), (node.description || "").slice(0, 4000), node.type, node.status, node.priority, node.assignee || "", node.start || "", node.due || "", Math.max(0, Math.min(100, Number(node.progress) || 0)), node.blockedReason || "", (node.info || "").slice(0, 4000), (node.link || "").slice(0, 2000), Boolean(node.evidenceRequired), (node.evidence || "").slice(0, 2000), Boolean(node.approvalRequired)));
+    (node.checklist ?? []).forEach((item, position) => statements.push(env.DB.prepare("INSERT INTO node_checklist_records (storage_id, workspace_id, checklist_id, node_id, text, done, position) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(`${workspaceId}:${node.id}:${item.id}`, workspaceId, item.id, node.id, item.text.slice(0, 500), Boolean(item.done), position)));
   });
   state.dependencies.forEach(dependency => statements.push(env.DB.prepare("INSERT INTO node_dependencies (storage_id, workspace_id, dependency_id, node_id, depends_on_id) VALUES (?, ?, ?, ?, ?)").bind(`${workspaceId}:${dependency.id}`, workspaceId, dependency.id, dependency.nodeId, dependency.dependsOnId)));
   (state.activity ?? []).slice(0, 500).forEach(activity => statements.push(env.DB.prepare("INSERT INTO activity_log_records (storage_id, workspace_id, activity_id, event_text, event_at) VALUES (?, ?, ?, ?, ?)").bind(`${workspaceId}:${activity.id}`, workspaceId, activity.id, activity.text.slice(0, 1000), activity.at)));
@@ -189,7 +196,7 @@ export async function POST(request: Request) {
     const write = currentRow
       ? await env.DB.prepare("UPDATE project_states SET payload = ?, version = version + 1, updated_at = CURRENT_TIMESTAMP WHERE workspace_id = ? AND version = ?")
         .bind(payload, workspace.id, currentRow.version).run()
-      : await env.DB.prepare("INSERT IGNORE INTO project_states (id, workspace_id, payload, version, updated_at) VALUES (?, ?, ?, 1, CURRENT_TIMESTAMP)")
+      : await env.DB.prepare("INSERT OR IGNORE INTO project_states (id, workspace_id, payload, version, updated_at) VALUES (?, ?, ?, 1, CURRENT_TIMESTAMP)")
         .bind(crypto.randomUUID(), workspace.id, payload).run();
     if (!write.meta.changes) {
       const latest = await env.DB.prepare("SELECT version FROM project_states WHERE workspace_id = ? LIMIT 1").bind(workspace.id).first<{ version: number }>();

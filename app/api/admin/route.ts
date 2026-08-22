@@ -130,7 +130,7 @@ export async function PATCH(request: Request) {
       const validUntil = body.validUntil && Number.isFinite(new Date(body.validUntil).getTime()) ? new Date(body.validUntil).toISOString() : null;
       await env.DB.batch([
         env.DB.prepare("UPDATE workspaces SET plan = ? WHERE id = ?").bind(planCode, body.workspaceId),
-        env.DB.prepare("UPDATE workspace_licenses SET plan_code = ?, status = ?, provider = 'manual', current_period_started_at = CASE WHEN ? = 'active' THEN COALESCE(current_period_started_at, CURRENT_TIMESTAMP) ELSE current_period_started_at END, current_period_ends_at = ?, cancel_at_period_end = 0, granted_by = ?, updated_at = CURRENT_TIMESTAMP WHERE workspace_id = ?").bind(planCode, status, status, validUntil, auth.user.email.toLowerCase(), body.workspaceId),
+        env.DB.prepare("UPDATE workspace_licenses SET plan_code = ?, status = ?, provider = 'manual', current_period_started_at = CASE WHEN ? = 'active' THEN COALESCE(current_period_started_at, CURRENT_TIMESTAMP) ELSE current_period_started_at END, current_period_ends_at = ?, cancel_at_period_end = ?, granted_by = ?, updated_at = CURRENT_TIMESTAMP WHERE workspace_id = ?").bind(planCode, status, status, validUntil, false, auth.user.email.toLowerCase(), body.workspaceId),
       ]);
       await recordBillingEvent({ workspaceId: body.workspaceId, provider: "manual", eventType: "admin.license_updated", status, details: { planCode, validUntil, actor: auth.user.email.toLowerCase() } });
       return Response.json({ ok: true, message: "Licença atualizada" });
@@ -145,7 +145,7 @@ export async function PATCH(request: Request) {
       const providerPriceId = String(body.providerPriceId || "").trim();
       if (!/^[a-z0-9-]{2,40}$/.test(code) || !name || !Number.isFinite(priceCents) || priceCents < 100) return Response.json({ error: "Dados do plano inválidos" }, { status: 400 });
       await env.DB.prepare("INSERT INTO billing_plans (code, name, description, price_cents, currency, billing_interval, provider_price_id, trial_days, active, highlighted) VALUES (?, ?, ?, ?, 'BRL', ?, ?, ?, ?, ?) ON CONFLICT(code) DO UPDATE SET name = excluded.name, description = excluded.description, price_cents = excluded.price_cents, billing_interval = excluded.billing_interval, provider_price_id = excluded.provider_price_id, trial_days = excluded.trial_days, active = excluded.active, highlighted = excluded.highlighted, updated_at = CURRENT_TIMESTAMP")
-        .bind(code, name.slice(0, 80), description.slice(0, 300), priceCents, interval, providerPriceId.slice(0, 160), trialDays, body.active === false ? 0 : 1, body.highlighted ? 1 : 0).run();
+        .bind(code, name.slice(0, 80), description.slice(0, 300), priceCents, interval, providerPriceId.slice(0, 160), trialDays, body.active !== false, Boolean(body.highlighted)).run();
       await recordBillingEvent({ provider: "manual", eventType: "admin.plan_updated", status: body.active === false ? "inactive" : "active", details: { code, priceCents, interval, actor: auth.user.email.toLowerCase() } });
       return Response.json({ ok: true, message: "Plano salvo e sincronizado" });
     }

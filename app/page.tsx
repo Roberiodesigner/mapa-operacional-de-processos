@@ -5,15 +5,15 @@ import { ensureCommercialSchema } from "./api/_lib/commercial";
 
 export const dynamic = "force-dynamic";
 
-type PublicPlan = { code:string; name:string; description:string; price_cents:number; billing_interval:"month"|"year"; trial_days:number; highlighted:number };
+type PublicPlan = { code:string; name:string; description:string; price_cents:number; billing_interval:"month"|"year"; trial_days:number; highlighted:boolean };
 
 async function publicPlans():Promise<PublicPlan[]> {
   try {
     await ensureCommercialSchema();
-    const rows = await env.DB.prepare("SELECT code, name, description, price_cents, billing_interval, trial_days, highlighted FROM billing_plans WHERE active = 1 ORDER BY highlighted DESC, price_cents ASC").all<PublicPlan>();
+    const rows = await env.DB.prepare("SELECT code, name, description, price_cents, billing_interval, trial_days, highlighted FROM billing_plans WHERE active = TRUE ORDER BY highlighted DESC, price_cents ASC").all<PublicPlan>();
     if (rows.results.length) return rows.results;
   } catch {}
-  return DEFAULT_COMMERCIAL_PLANS.map(plan=>({code:plan.code,name:plan.name,description:plan.description,price_cents:plan.priceCents,billing_interval:plan.interval,trial_days:7,highlighted:plan.code==="annual"?1:0}));
+  return DEFAULT_COMMERCIAL_PLANS.map(plan=>({code:plan.code,name:plan.name,description:plan.description,price_cents:plan.priceCents,billing_interval:plan.interval,trial_days:7,highlighted:plan.code==="annual"}));
 }
 
 const money=(cents:number)=>(cents/100).toLocaleString("pt-BR",{style:"currency",currency:"BRL",minimumFractionDigits:cents%100?2:0});

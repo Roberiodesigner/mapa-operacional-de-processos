@@ -58,9 +58,9 @@ Plataforma visual para transformar processos em execução. Esta versão entrega
 ## Arquitetura
 
 - Next.js, React, TypeScript e Tailwind CSS em Node.js 22;
-- MySQL da Hostinger para dados estruturados;
-- pasta persistente e privada para arquivos e evidências;
-- autenticação por e-mail com Supabase Auth;
+- Supabase Postgres para todos os dados estruturados;
+- Supabase Storage privado para arquivos e evidências;
+- autenticação por e-mail com Supabase Auth e isolamento por RLS;
 - rotas públicas em `/` e aplicação protegida em `/app`;
 - API `/api/workspace` com autorização server-side e limites de payload;
 - estado do editor versionado por Workspace;
@@ -68,7 +68,7 @@ Plataforma visual para transformar processos em execução. Esta versão entrega
 
 ## Banco de dados
 
-O schema MySQL idempotente está em `mysql/0000_hostinger.sql` e é aplicado automaticamente antes de cada inicialização. As tabelas atuais são:
+O bloco SQL idempotente para Postgres 17 está em `supabase/schema.sql`. Ele cria todas as tabelas, índices, políticas RLS e o bucket privado do Storage. Execute-o uma vez no SQL Editor do Supabase antes do primeiro deploy desta branch. As tabelas atuais são:
 
 - `workspaces`: proprietário, datas do trial e plano;
 - `project_states`: snapshot versionado do editor;
@@ -76,7 +76,7 @@ O schema MySQL idempotente está em `mysql/0000_hostinger.sql` e é aplicado aut
 - `node_dependencies`: dependências direcionais;
 - `node_checklist_records` e `node_comment_records`: execução e colaboração;
 - `activity_log_records`: histórico operacional;
-- `node_file_records`: metadados dos arquivos armazenados fora da raiz pública do site;
+- `node_file_records`: metadados dos arquivos privados armazenados no Supabase Storage;
 - `audit_log_records`: trilha imutável de uploads e exclusões.
 - `approval_records` e `approval_event_records`: solicitações, decisões e histórico de aprovação.
 - `workspace_members` e `map_permission_records`: equipe, papéis e acesso granular por mapa;
@@ -108,12 +108,12 @@ Comandos úteis:
 npm run build
 npm test
 npm run lint
-npm run db:migrate
+npm run db:check
 ```
 
 ## Publicação na Hostinger
 
-A branch `hostinger` é a versão preparada para a hospedagem Node.js. Ela usa MySQL e não altera a branch `main`, que continua sendo a referência da publicação anterior. O roteiro completo está em `HOSTINGER_DEPLOY.md`.
+A branch `supabase-postgres` roda em Node.js puro na Hostinger e usa Supabase Auth, Postgres e Storage. A branch `hostinger` anterior permanece preservada durante a validação. O roteiro completo está em `HOSTINGER_DEPLOY.md`.
 
 ## Integração Asaas
 

@@ -32,7 +32,7 @@ test("rotas de colaboração usam autorização por Workspace e mapa", async () 
     readFile(new URL("../app/api/collaboration/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/comments/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/nodes/route.ts", import.meta.url), "utf8"),
-    readFile(new URL("../drizzle/0005_motionless_pepper_potts.sql", import.meta.url), "utf8"),
+    readFile(new URL("../supabase/schema.sql", import.meta.url), "utf8"),
   ]);
   assert.match(collaboration, /canWorkspace/);
   assert.match(collaboration, /map_permission_records/);
@@ -40,6 +40,6 @@ test("rotas de colaboração usam autorização por Workspace e mapa", async () 
   assert.match(comments, /notification_records/);
   assert.match(nodes, /canAccessMap/);
   assert.match(nodes, /completionBlockReason/);
-  assert.match(migration, /CREATE TABLE `workspace_members`/);
-  assert.match(migration, /CREATE TABLE `notification_records`/);
+  assert.match(migration, /create table if not exists public\.workspace_members/i);
+  assert.match(migration, /create table if not exists public\.notification_records/i);
 });

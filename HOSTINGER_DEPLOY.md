@@ -1,76 +1,82 @@
-# Deploy do Mapa Operacional na Hostinger
+# Deploy do Mapa Operacional na Hostinger com Supabase
 
-Esta branch foi isolada para a migração. A `main` e o Site atual não são alterados durante os testes.
+Esta migração está isolada na branch `supabase-postgres`. A branch `hostinger` atual continua preservada até a validação final.
 
-## 1. Criar o banco
+## 1. Preparar o Supabase
 
-No hPanel, abra **Sites → Gerenciar → Bancos de dados MySQL** e crie:
+1. Abra o projeto **Mapa Operacional** no Supabase.
+2. Entre em **SQL Editor → New query**.
+3. Copie todo o conteúdo de `supabase/schema.sql`, execute e confirme a mensagem de sucesso.
+4. Em **Storage**, confirme que o bucket privado `mapa-operacional-private` foi criado.
+5. Em **Authentication → URL Configuration**, cadastre o domínio temporário da Hostinger e, depois, o domínio definitivo nas Redirect URLs.
 
-- um banco exclusivo para o Mapa Operacional;
-- um usuário exclusivo com acesso total a esse banco;
-- uma senha forte gerada pelo painel.
+O SQL cria todas as tabelas, índices, administrador inicial, RLS e políticas do Storage. Não crie tabelas manualmente no phpMyAdmin; o MySQL da Hostinger deixa de ser usado nesta branch.
 
-Guarde o host, porta, nome do banco e usuário. Não envie a senha por mensagem e não coloque credenciais no GitHub.
+## 2. Obter a conexão Postgres
 
-## 2. Criar a aplicação Node.js
+No Supabase, abra **Connect → ORMs → Drizzle** e escolha a conexão **Session pooler** compatível com IPv4. Copie a URI completa e substitua o marcador da senha pela senha do banco.
 
-No hPanel, escolha **Adicionar site → Aplicação Node.js → Importar repositório do GitHub** e use:
+Se a senha tiver caracteres como `@`, `#`, `%`, `/` ou `:`, use a versão URL-encoded. A URI é segredo e nunca deve ser enviada por mensagem ou commitada no GitHub.
+
+## 3. Configurar a aplicação Node.js
+
+No hPanel, use a aplicação Node.js já criada e altere para:
 
 - repositório: `Roberiodesigner/mapa-operacional-de-processos`;
-- branch: `hostinger`;
+- branch: `supabase-postgres` durante a validação;
 - versão do Node.js: `22`;
 - framework: `Next.js`;
-- pasta raiz: `.`;
-- comando de instalação: `npm ci`;
-- comando de build: `npm run build`;
-- comando de inicialização: `npm start`.
+- diretório raiz: `.`;
+- instalação: `npm ci`;
+- build: `npm run build`;
+- inicialização: `npm start`.
 
-Ative a implantação automática somente para a branch `hostinger` enquanto a migração estiver em validação.
+## 4. Variáveis da Hostinger
 
-## 3. Configurar as variáveis
-
-Adicione no painel da aplicação:
+Configure uma por uma ou importe um arquivo `.env` baseado em `.env.example`:
 
 ```text
-DB_HOST=host exibido pela Hostinger
-DB_PORT=3306
-DB_USER=usuário criado no hPanel
-DB_PASSWORD=senha criada no hPanel
-DB_NAME=nome do banco criado no hPanel
-DB_SSL=false
-PRIVATE_UPLOADS_PATH=pasta absoluta privada e persistente indicada pela Hostinger
-PLATFORM_ADMIN_EMAIL=e-mail exclusivo do proprietário
-NEXT_PUBLIC_SUPABASE_URL=URL do projeto de autenticação
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=chave publicável do projeto
+PLATFORM_ADMIN_EMAIL=roberiolimarl77@gmail.com
+NEXT_PUBLIC_SUPABASE_URL=https://SEU_PROJECT_REF.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
+DATABASE_URL=URI_COMPLETA_DO_SESSION_POOLER_COM_SSL
+DATABASE_POOL_SIZE=5
+SUPABASE_STORAGE_BUCKET=mapa-operacional-private
 ASAAS_ENVIRONMENT=sandbox
-ASAAS_API_KEY=chave segura do Asaas
-ASAAS_WEBHOOK_TOKEN=token seguro e exclusivo do webhook
+ASAAS_API_KEY=SUA_CHAVE_SECRETA
+ASAAS_WEBHOOK_TOKEN=SEU_TOKEN_PROPRIO
 ```
 
-`PRIVATE_UPLOADS_PATH` não pode apontar para `public/` nem para a raiz publicada do site. A aplicação recusa uploads em produção quando essa variável não está configurada.
+Não configure `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_SSL` nem `PRIVATE_UPLOADS_PATH`. Elas pertenciam à versão MySQL anterior.
 
-## 4. Primeiro deploy de teste
+`SUPABASE_SERVICE_ROLE_KEY` também não é necessária nesta implementação. O Storage recebe a sessão autenticada e respeita as políticas RLS; isso reduz o impacto de um segredo vazado.
 
-O comando `npm start` executa a migração idempotente `mysql/0000_hostinger.sql` e inicia o Next.js na porta fornecida pela hospedagem. Use primeiro o domínio temporário da Hostinger e valide:
+## 5. Reimplantar e validar
 
-1. página pública e valores dos planos;
-2. cadastro, login e recuperação de senha;
-3. acesso de cliente em `/app`;
-4. acesso exclusivo do proprietário em `/admin/login` e `/admin`;
-5. criação e salvamento de mapas;
-6. upload e download de evidência;
-7. link público `/review/...` em janela anônima;
-8. comentário do cliente sem login;
-9. checkout Asaas somente no ambiente sandbox.
+Clique em **Reimplantar** e aguarde o build terminar. Valide no domínio temporário:
 
-## 5. Domínio definitivo
+1. cadastro, login, recuperação e logout;
+2. criação automática do Workspace e carregamento de `/app`;
+3. criação, edição e salvamento de mapas;
+4. painel `/admin` somente com o e-mail administrativo;
+5. alteração de planos refletida na página pública;
+6. upload, download e exclusão de evidências;
+7. link `/review/...` numa janela anônima;
+8. comentário externo sem login;
+9. convite e permissões de um usuário autenticado;
+10. checkout Asaas no sandbox.
 
-Conecte o domínio comprado apenas depois que todos os itens do teste passarem. Em seguida, atualize no Supabase as URLs autorizadas de login e recuperação e cadastre no Asaas a nova URL de webhook exibida pelo painel administrativo.
+## 6. Domínio definitivo
 
-## Segurança preservada
+Depois da validação, conecte o domínio definitivo, atualize as Redirect URLs do Supabase e a URL do webhook no Asaas. A troca de domínio não exige alterar o banco.
 
-- `/admin` exige sessão autenticada e registro de `super_admin`;
-- clientes comuns não recebem links nem permissões para a área administrativa;
-- os links `/review/...` usam token armazenado somente como hash;
-- dados e permissões continuam isolados por Workspace;
-- segredos ficam nas variáveis da Hostinger, nunca no repositório.
+## Segurança
+
+- a aplicação roda em Node.js puro, sem runtime Cloudflare;
+- o Postgres é acessado somente no servidor por `DATABASE_URL`;
+- todas as tabelas públicas possuem RLS;
+- Workspaces usam `auth.uid()` e vínculo de membros para isolamento;
+- o bucket é privado e os arquivos ficam sob o prefixo do Workspace;
+- `/admin` continua separado e exige Super Admin;
+- links de revisão armazenam somente o hash do token;
+- nenhuma credencial real fica no repositório.

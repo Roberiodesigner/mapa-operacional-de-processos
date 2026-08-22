@@ -1,5 +1,6 @@
 import { env } from "@/platform/hostinger-env";
 import { MAX_FILES_PER_NODE, sanitizeFileName, validateUpload } from "../../app/file-policy";
+import { createSupabaseServerClient } from "../../supabase/server";
 import { canAccessMap, canWorkspace, getWorkspaceAccessContext, nodeBelongsToAccessibleMap, workspaceWriteAllowed } from "../_lib/collaboration";
 
 type FileRow = {
@@ -30,6 +31,12 @@ async function context() {
   return getWorkspaceAccessContext();
 }
 
+async function privateFiles() {
+  const supabase = await createSupabaseServerClient();
+  if (!supabase) throw new Error("Supabase Storage não configurado");
+  return supabase.storage.from(process.env.SUPABASE_STORAGE_BUCKET?.trim() || "mapa-operacional-private");
+}
+
 function publicFile(row: FileRow) {
   return { id: row.id, mapId: row.map_id, nodeId: row.node_id, name: row.file_name, type: row.content_type, size: row.size_bytes, uploadedBy: row.uploaded_by, createdAt: row.created_at };
 }
@@ -43,10 +50,11 @@ export async function GET(request: Request) {
     const row = await env.DB.prepare("SELECT * FROM node_file_records WHERE id = ? AND workspace_id = ? LIMIT 1").bind(fileId, current.workspace.id).first<FileRow>();
     if (!row) return Response.json({ error: "Arquivo não encontrado" }, { status: 404 });
     if (!await canAccessMap(current, row.map_id, "view")) return Response.json({ error: "Sem acesso a este arquivo" }, { status: 403 });
-    const object = await env.BUCKET.get(row.object_key);
-    if (!object) return Response.json({ error: "Conteúdo do arquivo indisponível" }, { status: 404 });
+    const bucket = await privateFiles();
+    const { data: object, error } = await bucket.download(row.object_key);
+    if (error || !object) return Response.json({ error: "Conteúdo do arquivo indisponível" }, { status: 404 });
     const downloadName = row.file_name.replace(/["\r\n]/g, "");
-    return new Response(object.body, { headers: { "content-type": row.content_type, "content-length": String(row.size_bytes), "content-disposition": `attachment; filename="${downloadName}"`, "cache-control": "private, no-store", "x-content-type-options": "nosniff" } });
+    return new Response(object, { headers: { "content-type": row.content_type, "content-length": String(row.size_bytes), "content-disposition": `attachment; filename="${downloadName}"`, "cache-control": "private, no-store", "x-content-type-options": "nosniff" } });
   }
   const nodeId = url.searchParams.get("nodeId");
   if (!nodeId) return Response.json({ error: "Etapa não informada" }, { status: 400 });
@@ -72,14 +80,20 @@ export async function POST(request: Request) {
   const id = crypto.randomUUID();
   const safeName = sanitizeFileName(file.name);
   const objectKey = `${current.workspace.id}/${mapId}/${nodeId}/${id}-${safeName}`;
-  await env.BUCKET.put(objectKey, file.stream(), { httpMetadata: { contentType: file.type || "application/octet-stream" }, customMetadata: { workspaceId: current.workspace.id, nodeId, uploadedBy: current.user.email } });
+  const bucket = await privateFiles();
+  const { error: uploadError } = await bucket.upload(objectKey, await file.arrayBuffer(), {
+    contentType: file.type || "application/octet-stream",
+    upsert: false,
+    metadata: { workspaceId: current.workspace.id, nodeId, uploadedBy: current.user.email },
+  });
+  if (uploadError) throw new Error(`Falha ao enviar evidência: ${uploadError.message}`);
   try {
     await env.DB.batch([
       env.DB.prepare("INSERT INTO node_file_records (id, workspace_id, map_id, node_id, object_key, file_name, content_type, size_bytes, uploaded_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, current.workspace.id, mapId, nodeId, objectKey, file.name.slice(0, 240), file.type || "application/octet-stream", file.size, current.user.email),
       env.DB.prepare("INSERT INTO audit_log_records (id, workspace_id, actor_email, action, resource_type, resource_id, details) VALUES (?, ?, ?, 'file_uploaded', 'node', ?, ?)").bind(crypto.randomUUID(), current.workspace.id, current.user.email, nodeId, JSON.stringify({ fileId: id, fileName: file.name, size: file.size })),
     ]);
   } catch (error) {
-    await env.BUCKET.delete(objectKey);
+    await bucket.remove([objectKey]);
     throw error;
   }
   const row = await env.DB.prepare("SELECT * FROM node_file_records WHERE id = ? AND workspace_id = ?").bind(id, current.workspace.id).first<FileRow>();
@@ -95,7 +109,9 @@ export async function DELETE(request: Request) {
   const row = await env.DB.prepare("SELECT * FROM node_file_records WHERE id = ? AND workspace_id = ? LIMIT 1").bind(fileId, current.workspace.id).first<FileRow>();
   if (!row) return Response.json({ error: "Arquivo não encontrado" }, { status: 404 });
   if (!await canAccessMap(current, row.map_id, "view") || (row.uploaded_by.toLowerCase() !== current.user.email.toLowerCase() && !canWorkspace(current, "edit"))) return Response.json({ error: "Sem permissão para excluir este arquivo" }, { status: 403 });
-  await env.BUCKET.delete(row.object_key);
+  const bucket = await privateFiles();
+  const { error: deleteError } = await bucket.remove([row.object_key]);
+  if (deleteError) return Response.json({ error: `Não foi possível excluir o arquivo: ${deleteError.message}` }, { status: 502 });
   await env.DB.batch([
     env.DB.prepare("DELETE FROM node_file_records WHERE id = ? AND workspace_id = ?").bind(fileId, current.workspace.id),
     env.DB.prepare("INSERT INTO audit_log_records (id, workspace_id, actor_email, action, resource_type, resource_id, details) VALUES (?, ?, ?, 'file_deleted', 'node', ?, ?)").bind(crypto.randomUUID(), current.workspace.id, current.user.email, row.node_id, JSON.stringify({ fileId, fileName: row.file_name })),

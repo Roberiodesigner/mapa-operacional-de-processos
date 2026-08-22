@@ -49,7 +49,7 @@ function publicMarker(row: MarkerRow) {
 }
 
 async function mapExists(workspaceId: string, mapId: string) {
-  return Boolean(await env.DB.prepare("SELECT map_id FROM map_records WHERE workspace_id = ? AND map_id = ? AND archived = 0 LIMIT 1")
+  return Boolean(await env.DB.prepare("SELECT map_id FROM map_records WHERE workspace_id = ? AND map_id = ? AND archived = FALSE LIMIT 1")
     .bind(workspaceId, mapId).first());
 }
 
@@ -100,8 +100,8 @@ export async function POST(request: Request) {
   }
   const id = crypto.randomUUID(), label = (body.label || "Revisão do cliente").trim().slice(0, 160) || "Revisão do cliente";
   await env.DB.batch([
-    env.DB.prepare("INSERT INTO review_link_records (id, workspace_id, map_id, root_node_id, label, token_hash, status, allow_comments, expires_at, created_by) VALUES (?, ?, ?, ?, ?, ?, 'active', 1, ?, ?)")
-      .bind(id, context.workspace.id, mapId, rootNodeId, label, tokenHash, expiresAt, context.user.email),
+    env.DB.prepare("INSERT INTO review_link_records (id, workspace_id, map_id, root_node_id, label, token_hash, status, allow_comments, expires_at, created_by) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)")
+      .bind(id, context.workspace.id, mapId, rootNodeId, label, tokenHash, true, expiresAt, context.user.email),
     env.DB.prepare("INSERT INTO audit_log_records (id, workspace_id, actor_email, action, resource_type, resource_id, details) VALUES (?, ?, ?, 'review_link_created', 'review_link', ?, ?)")
       .bind(crypto.randomUUID(), context.workspace.id, context.user.email, id, JSON.stringify({ mapId, rootNodeId, label, expiresAt })),
   ]);

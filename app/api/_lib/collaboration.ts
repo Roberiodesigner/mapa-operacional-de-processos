@@ -5,8 +5,8 @@ import { deriveWorkspaceEntitlement } from "../../commercial-policy";
 import { ensureCommercialSchema } from "./commercial";
 
 export type WorkspaceAccessContext = {
-  user: { email: string; displayName: string };
-  workspace: { id: string; name: string; owner_email: string; trial_started_at: string; trial_ends_at: string; plan: string; license_status?: string | null; license_period_ends_at?: string | null };
+  user: { id: string | null; email: string; displayName: string };
+  workspace: { id: string; name: string; owner_email: string; owner_user_id?: string | null; trial_started_at: string; trial_ends_at: string; plan: string; license_status?: string | null; license_period_ends_at?: string | null };
   memberId: string | null;
   role: MemberRole;
   allMaps: boolean;
@@ -37,24 +37,28 @@ export async function getWorkspaceAccessContext(): Promise<WorkspaceAccessContex
   await ensureCommercialSchema();
   await ensureCollaborationSchema();
   const email = user.email.trim().toLowerCase();
-  const owner = await env.DB.prepare("SELECT w.id, w.name, w.owner_email, w.trial_started_at, w.trial_ends_at, w.plan, l.status AS license_status, l.current_period_ends_at AS license_period_ends_at FROM workspaces w LEFT JOIN workspace_licenses l ON l.workspace_id = w.id WHERE lower(w.owner_email) = ? LIMIT 1")
-    .bind(email).first<WorkspaceAccessContext["workspace"]>();
+  const owner = await env.DB.prepare("SELECT w.id, w.name, w.owner_email, w.owner_user_id, w.trial_started_at, w.trial_ends_at, w.plan, l.status AS license_status, l.current_period_ends_at AS license_period_ends_at FROM workspaces w LEFT JOIN workspace_licenses l ON l.workspace_id = w.id WHERE w.owner_user_id = ? OR lower(w.owner_email) = ? LIMIT 1")
+    .bind(user.id, email).first<WorkspaceAccessContext["workspace"]>();
   if (owner) {
+    if (user.id && !owner.owner_user_id) {
+      await env.DB.prepare("UPDATE workspaces SET owner_user_id = ? WHERE id = ? AND owner_user_id IS NULL").bind(user.id, owner.id).run();
+      owner.owner_user_id = user.id;
+    }
     const entitlement = deriveWorkspaceEntitlement({ workspacePlan: owner.plan, trialEndsAt: owner.trial_ends_at, licenseStatus: owner.license_status, currentPeriodEndsAt: owner.license_period_ends_at });
     return { user, workspace: owner, memberId: null, role: "owner", allMaps: true, commercialCanWrite: entitlement.canEdit };
   }
-  const member = await env.DB.prepare("SELECT m.id AS member_id, m.role, m.status, m.all_maps, w.id, w.name, w.owner_email, w.trial_started_at, w.trial_ends_at, w.plan, l.status AS license_status, l.current_period_ends_at AS license_period_ends_at FROM workspace_members m INNER JOIN workspaces w ON w.id = m.workspace_id LEFT JOIN workspace_licenses l ON l.workspace_id = w.id WHERE lower(m.email) = ? AND m.status IN ('pending', 'active') ORDER BY m.invited_at DESC LIMIT 1")
-    .bind(email).first<WorkspaceAccessContext["workspace"] & { member_id: string; role: MemberRole; status: string; all_maps: number }>();
+  const member = await env.DB.prepare("SELECT m.id AS member_id, m.role, m.status, m.all_maps, m.user_id, w.id, w.name, w.owner_email, w.owner_user_id, w.trial_started_at, w.trial_ends_at, w.plan, l.status AS license_status, l.current_period_ends_at AS license_period_ends_at FROM workspace_members m INNER JOIN workspaces w ON w.id = m.workspace_id LEFT JOIN workspace_licenses l ON l.workspace_id = w.id WHERE (m.user_id = ? OR lower(m.email) = ?) AND m.status IN ('pending', 'active') ORDER BY m.invited_at DESC LIMIT 1")
+    .bind(user.id, email).first<WorkspaceAccessContext["workspace"] & { member_id: string; role: MemberRole; status: string; all_maps: number; user_id: string | null }>();
   if (!member) return null;
   if (member.status === "pending") {
-    await env.DB.prepare("UPDATE workspace_members SET status = 'active', joined_at = COALESCE(joined_at, CURRENT_TIMESTAMP), last_active_at = CURRENT_TIMESTAMP, display_name = CASE WHEN display_name = '' THEN ? ELSE display_name END WHERE id = ?")
-      .bind(user.displayName, member.member_id).run();
+    await env.DB.prepare("UPDATE workspace_members SET user_id = COALESCE(user_id, ?), status = 'active', joined_at = COALESCE(joined_at, CURRENT_TIMESTAMP), last_active_at = CURRENT_TIMESTAMP, display_name = CASE WHEN display_name = '' THEN ? ELSE display_name END WHERE id = ?")
+      .bind(user.id, user.displayName, member.member_id).run();
   } else {
-    await env.DB.prepare("UPDATE workspace_members SET last_active_at = CURRENT_TIMESTAMP WHERE id = ?").bind(member.member_id).run();
+    await env.DB.prepare("UPDATE workspace_members SET user_id = COALESCE(user_id, ?), last_active_at = CURRENT_TIMESTAMP WHERE id = ?").bind(user.id, member.member_id).run();
   }
   return {
     user,
-    workspace: { id: member.id, name: member.name, owner_email: member.owner_email, trial_started_at: member.trial_started_at, trial_ends_at: member.trial_ends_at, plan: member.plan, license_status: member.license_status, license_period_ends_at: member.license_period_ends_at },
+    workspace: { id: member.id, name: member.name, owner_email: member.owner_email, owner_user_id: member.owner_user_id, trial_started_at: member.trial_started_at, trial_ends_at: member.trial_ends_at, plan: member.plan, license_status: member.license_status, license_period_ends_at: member.license_period_ends_at },
     memberId: member.member_id,
     role: member.role,
     allMaps: Boolean(member.all_maps),

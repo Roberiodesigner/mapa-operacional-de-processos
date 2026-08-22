@@ -1,4 +1,4 @@
-import { ensureHostingerDatabaseSchema, env } from "@/platform/hostinger-env";
+import { env } from "@/platform/hostinger-env";
 import { DEFAULT_COMMERCIAL_PLANS, deriveWorkspaceEntitlement, type WorkspaceEntitlement } from "../../commercial-policy";
 
 export type WorkspaceCommercialRow = {
@@ -20,7 +20,7 @@ export type LicenseRow = {
   provider_subscription_id: string;
   current_period_started_at: string | null;
   current_period_ends_at: string | null;
-  cancel_at_period_end: number;
+  cancel_at_period_end: boolean;
   granted_by: string;
   created_at: string;
   updated_at: string;
@@ -36,7 +36,6 @@ export function runtimeValue(key: string) {
 export async function ensureCommercialSchema() {
   if (schemaReady) return schemaReady;
   schemaReady = (async () => {
-    await ensureHostingerDatabaseSchema();
     await env.DB.batch([
       env.DB.prepare("CREATE TABLE IF NOT EXISTS workspaces (id TEXT PRIMARY KEY NOT NULL, owner_email TEXT NOT NULL UNIQUE, name TEXT NOT NULL, trial_started_at TEXT NOT NULL, trial_ends_at TEXT NOT NULL, plan TEXT NOT NULL DEFAULT 'trial', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"),
       env.DB.prepare("CREATE TABLE IF NOT EXISTS platform_admins (email TEXT PRIMARY KEY NOT NULL, role TEXT NOT NULL DEFAULT 'super_admin', status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"),
@@ -51,8 +50,8 @@ export async function ensureCommercialSchema() {
       env.DB.prepare("CREATE INDEX IF NOT EXISTS billing_checkouts_workspace_idx ON billing_checkout_records(workspace_id, created_at)"),
     ]);
     for (const plan of DEFAULT_COMMERCIAL_PLANS) {
-      await env.DB.prepare("INSERT OR IGNORE INTO billing_plans (code, name, description, price_cents, currency, billing_interval, trial_days, active, highlighted) VALUES (?, ?, ?, ?, 'BRL', ?, 7, 1, ?)")
-        .bind(plan.code, plan.name, plan.description, plan.priceCents, plan.interval, plan.code === "annual" ? 1 : 0)
+      await env.DB.prepare("INSERT OR IGNORE INTO billing_plans (code, name, description, price_cents, currency, billing_interval, trial_days, active, highlighted) VALUES (?, ?, ?, ?, 'BRL', ?, 7, ?, ?)")
+        .bind(plan.code, plan.name, plan.description, plan.priceCents, plan.interval, true, plan.code === "annual")
         .run();
     }
     const configuredAdmin = runtimeValue("PLATFORM_ADMIN_EMAIL").toLowerCase();
@@ -180,10 +179,10 @@ export async function updateLicenseFromProvider(input: {
   const existing = await env.DB.prepare("SELECT id FROM workspace_licenses WHERE workspace_id = ? LIMIT 1").bind(input.workspaceId).first<{ id: string }>();
   if (existing) {
     await env.DB.prepare("UPDATE workspace_licenses SET plan_code = ?, status = ?, provider = ?, provider_customer_id = CASE WHEN ? <> '' THEN ? ELSE provider_customer_id END, provider_subscription_id = CASE WHEN ? <> '' THEN ? ELSE provider_subscription_id END, current_period_started_at = COALESCE(?, current_period_started_at), current_period_ends_at = COALESCE(?, current_period_ends_at), cancel_at_period_end = ?, updated_at = CURRENT_TIMESTAMP WHERE workspace_id = ?")
-      .bind(input.planCode, input.status, provider, input.providerCustomerId || "", input.providerCustomerId || "", input.providerSubscriptionId || "", input.providerSubscriptionId || "", input.periodStart || null, input.periodEnd || null, input.cancelAtPeriodEnd ? 1 : 0, input.workspaceId).run();
+      .bind(input.planCode, input.status, provider, input.providerCustomerId || "", input.providerCustomerId || "", input.providerSubscriptionId || "", input.providerSubscriptionId || "", input.periodStart || null, input.periodEnd || null, Boolean(input.cancelAtPeriodEnd), input.workspaceId).run();
   } else {
     await env.DB.prepare("INSERT INTO workspace_licenses (id, workspace_id, plan_code, status, provider, provider_customer_id, provider_subscription_id, current_period_started_at, current_period_ends_at, cancel_at_period_end) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-      .bind(crypto.randomUUID(), input.workspaceId, input.planCode, input.status, provider, input.providerCustomerId || "", input.providerSubscriptionId || "", input.periodStart || null, input.periodEnd || null, input.cancelAtPeriodEnd ? 1 : 0).run();
+      .bind(crypto.randomUUID(), input.workspaceId, input.planCode, input.status, provider, input.providerCustomerId || "", input.providerSubscriptionId || "", input.periodStart || null, input.periodEnd || null, Boolean(input.cancelAtPeriodEnd)).run();
   }
   if (/^[a-z0-9-]{2,40}$/.test(input.planCode)) await env.DB.prepare("UPDATE workspaces SET plan = ? WHERE id = ?").bind(input.planCode, input.workspaceId).run();
 }

@@ -42,7 +42,7 @@ export async function PATCH(request: Request) {
   ];
   if (next.checklist) {
     statements.push(env.DB.prepare("DELETE FROM node_checklist_records WHERE workspace_id = ? AND node_id = ?").bind(context.workspace.id, nodeId));
-    next.checklist.forEach((item, position) => statements.push(env.DB.prepare("INSERT INTO node_checklist_records (storage_id, workspace_id, checklist_id, node_id, text, done, position) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(`${context.workspace.id}:${nodeId}:${item.id}`, context.workspace.id, item.id, nodeId, item.text, item.done ? 1 : 0, position)));
+    next.checklist.forEach((item, position) => statements.push(env.DB.prepare("INSERT INTO node_checklist_records (storage_id, workspace_id, checklist_id, node_id, text, done, position) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(`${context.workspace.id}:${nodeId}:${item.id}`, context.workspace.id, item.id, nodeId, item.text, Boolean(item.done), position)));
   }
   for (let index = 0; index < statements.length; index += 75) await env.DB.batch(statements.slice(index, index + 75));
   return Response.json({ node, completionBlocked: block });

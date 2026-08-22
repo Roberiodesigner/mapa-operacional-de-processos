@@ -117,7 +117,7 @@ export async function POST(request: Request) {
     .bind(context.workspace.id, email).first<{ id: string }>();
   const id = existing?.id || crypto.randomUUID();
   await env.DB.prepare("INSERT INTO workspace_members (id, workspace_id, email, display_name, role, status, all_maps, invited_by) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?) ON CONFLICT(workspace_id, email) DO UPDATE SET display_name = excluded.display_name, role = excluded.role, all_maps = excluded.all_maps, invited_by = excluded.invited_by, invited_at = CURRENT_TIMESTAMP")
-    .bind(id, context.workspace.id, email, (body.name || "").trim().slice(0, 160), role, allMaps ? 1 : 0, context.user.email).run();
+    .bind(id, context.workspace.id, email, (body.name || "").trim().slice(0, 160), role, allMaps, context.user.email).run();
   await replaceMapPermissions(context.workspace.id, id, role, allMaps, body.mapIds);
   await env.DB.batch([
     env.DB.prepare("INSERT INTO notification_records (id, workspace_id, recipient_email, kind, actor_email, message) VALUES (?, ?, ?, 'workspace_invite', ?, ?)")
@@ -140,7 +140,7 @@ export async function PATCH(request: Request) {
   const allMaps = role === "admin" ? true : Boolean(body.allMaps);
   if (!allMaps && (!Array.isArray(body.mapIds) || body.mapIds.length === 0)) return Response.json({ error: "Escolha pelo menos um mapa ou libere todos" }, { status: 400 });
   await env.DB.prepare("UPDATE workspace_members SET display_name = ?, role = ?, all_maps = ? WHERE id = ? AND workspace_id = ?")
-    .bind((body.name ?? member.display_name).trim().slice(0, 160), role, allMaps ? 1 : 0, member.id, context.workspace.id).run();
+    .bind((body.name ?? member.display_name).trim().slice(0, 160), role, allMaps, member.id, context.workspace.id).run();
   await replaceMapPermissions(context.workspace.id, member.id, role, allMaps, body.mapIds);
   await env.DB.prepare("INSERT INTO audit_log_records (id, workspace_id, actor_email, action, resource_type, resource_id, details) VALUES (?, ?, ?, 'member_permissions_updated', 'workspace_member', ?, ?)")
     .bind(crypto.randomUUID(), context.workspace.id, context.user.email, member.id, JSON.stringify({ role, allMaps })).run();

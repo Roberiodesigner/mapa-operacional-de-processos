@@ -5,7 +5,7 @@ import test from "node:test";
 test("página pública contém a proposta e os planos", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   assert.match(page, /Transforme processos em mapas/);
-  assert.match(page, /billing_plans WHERE active = 1/);
+  assert.match(page, /billing_plans WHERE active = TRUE/);
   assert.match(page, /plans\.map/);
   assert.match(page, /Testar grátis por \{plan\.trial_days\} dias/);
 });
@@ -15,7 +15,7 @@ test("painel comercial centraliza planos e integração Asaas", async () => {
     readFile(new URL("../app/admin/admin-dashboard.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/api/billing/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/billing/webhook/route.ts", import.meta.url), "utf8"),
-    readFile(new URL("../mysql/0000_hostinger.sql", import.meta.url), "utf8"),
+    readFile(new URL("../supabase/schema.sql", import.meta.url), "utf8"),
   ]);
   assert.match(admin, />Integrações</);
   assert.match(admin, /As alterações aparecem automaticamente na página pública/);
@@ -24,21 +24,21 @@ test("painel comercial centraliza planos e integração Asaas", async () => {
   assert.match(billing, /billing_checkout_records/);
   assert.match(webhook, /asaas-access-token/);
   assert.match(webhook, /providerEventId: event\.id/);
-  assert.match(migration, /CREATE TABLE IF NOT EXISTS workspace_licenses/);
-  assert.match(migration, /CREATE TABLE IF NOT EXISTS billing_checkout_records/);
+  assert.match(migration, /create table if not exists public\.workspace_licenses/i);
+  assert.match(migration, /create table if not exists public\.billing_checkout_records/i);
 });
 
-test("aplicação usa autenticação e persistência MySQL na Hostinger", async () => {
+test("aplicação usa autenticação e persistência Supabase Postgres na Hostinger", async () => {
   const [appPage, runtime, migration] = await Promise.all([
     readFile(new URL("../app/app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../platform/hostinger-env.ts", import.meta.url), "utf8"),
-    readFile(new URL("../mysql/0000_hostinger.sql", import.meta.url), "utf8"),
+    readFile(new URL("../supabase/schema.sql", import.meta.url), "utf8"),
   ]);
   assert.match(appPage, /requireChatGPTUser/);
-  assert.match(runtime, /createPool/);
-  assert.match(runtime, /class MysqlD1Database/);
-  assert.match(migration, /CREATE TABLE IF NOT EXISTS workspaces/);
-  assert.match(migration, /CREATE TABLE IF NOT EXISTS project_states/);
+  assert.match(runtime, /postgres\(databaseUrl\(\)/);
+  assert.match(runtime, /class PostgresDatabase/);
+  assert.match(migration, /create table if not exists public\.workspaces/i);
+  assert.match(migration, /create table if not exists public\.project_states/i);
 });
 
 test("cliente e administração possuem entradas separadas e a aplicação não expõe atalho administrativo", async () => {
@@ -73,7 +73,7 @@ test("API administrativa exige login e função administrativa no servidor", asy
   const configuredAdminCheck = commercial.indexOf("normalized === configuredAdmin");
   const databaseFallback = commercial.indexOf("await ensureCommercialSchema();", configuredAdminCheck);
   assert.ok(configuredAdminCheck >= 0 && databaseFallback > configuredAdminCheck,
-    "o e-mail administrativo configurado deve ser autorizado antes da consulta ao MySQL");
+    "o e-mail administrativo configurado deve ser autorizado antes da consulta ao Postgres");
 });
 
 test("painel administrativo trata respostas vazias e logout usa a origem pública", async () => {
@@ -88,34 +88,34 @@ test("painel administrativo trata respostas vazias e logout usa a origem públic
   assert.match(adminRoute, /publicOrigin\(request\).*api\/billing\/webhook/s);
 });
 
-test("arquivos usam armazenamento privado, autorização e metadados relacionais", async () => {
-  const [bucket, route, migration] = await Promise.all([
-    readFile(new URL("../platform/hostinger-env.ts", import.meta.url), "utf8"),
+test("arquivos usam Supabase Storage privado, autorização e metadados relacionais", async () => {
+  const [supabase, route, migration] = await Promise.all([
+    readFile(new URL("../app/supabase/server.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/files/route.ts", import.meta.url), "utf8"),
-    readFile(new URL("../mysql/0000_hostinger.sql", import.meta.url), "utf8"),
+    readFile(new URL("../supabase/schema.sql", import.meta.url), "utf8"),
   ]);
-  assert.match(bucket, /class PrivateFileBucket/);
-  assert.match(bucket, /PRIVATE_UPLOADS_PATH/);
+  assert.match(supabase, /createServerClient/);
   assert.match(route, /getWorkspaceAccessContext/);
   assert.match(route, /workspace_id = \?/);
-  assert.match(route, /env\.BUCKET\.put/);
+  assert.match(route, /storage\.from/);
+  assert.match(route, /bucket\.upload/);
   assert.match(route, /cache-control.*private, no-store/);
-  assert.match(migration, /CREATE TABLE IF NOT EXISTS node_file_records/);
-  assert.match(migration, /CREATE TABLE IF NOT EXISTS audit_log_records/);
+  assert.match(migration, /create table if not exists public\.node_file_records/i);
+  assert.match(migration, /create table if not exists public\.audit_log_records/i);
 });
 
 test("aprovações possuem autorização, histórico e decisões persistentes", async () => {
   const [route, migration, app] = await Promise.all([
     readFile(new URL("../app/api/approvals/route.ts", import.meta.url), "utf8"),
-    readFile(new URL("../mysql/0000_hostinger.sql", import.meta.url), "utf8"),
+    readFile(new URL("../supabase/schema.sql", import.meta.url), "utf8"),
     readFile(new URL("../app/app/workspace-app.tsx", import.meta.url), "utf8"),
   ]);
   assert.match(route, /getWorkspaceAccessContext/);
   assert.match(route, /workspace_id = \?/);
   assert.match(route, /approval_changes_requested/);
   assert.match(route, /Anexe a evidência obrigatória/);
-  assert.match(migration, /CREATE TABLE IF NOT EXISTS approval_records/);
-  assert.match(migration, /CREATE TABLE IF NOT EXISTS approval_event_records/);
+  assert.match(migration, /create table if not exists public\.approval_records/i);
+  assert.match(migration, /create table if not exists public\.approval_event_records/i);
   assert.match(app, /PORTAL DO CLIENTE · VISÃO RESTRITA/);
   assert.match(app, /dependências recalculadas/);
 });

@@ -9,17 +9,17 @@
     "install:ci": "npm ci",
     "dev": "next dev",
     "build": "next build",
-    "start": "node scripts/migrate-mysql.mjs && next start -p ${PORT:-3000}",
+    "start": "next start -p ${PORT:-3000}",
     "test": "npm run build && node --experimental-strip-types --test tests/*.mjs",
     "lint": "eslint . --ignore-pattern .next --ignore-pattern dist --ignore-pattern drizzle --ignore-pattern examples",
-    "db:migrate": "node scripts/migrate-mysql.mjs"
+    "db:check": "drizzle-kit check"
   },
   "dependencies": {
     "@supabase/ssr": "0.12.4",
     "@supabase/supabase-js": "2.112.3",
     "drizzle-orm": "0.45.2",
-    "mysql2": "3.14.4",
     "next": "16.2.6",
+    "postgres": "3.4.9",
     "react": "19.2.6",
     "react-dom": "19.2.6"
   },
@@ -28,6 +28,7 @@
     "@types/node": "22.19.19",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
+    "drizzle-kit": "0.31.10",
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.6",
     "tailwindcss": "4.2.1",
