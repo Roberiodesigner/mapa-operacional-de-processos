@@ -60,15 +60,20 @@ test("cliente e administração possuem entradas separadas e a aplicação não 
 });
 
 test("API administrativa exige login e função administrativa no servidor", async () => {
-  const [adminApi, adminLoginApi] = await Promise.all([
+  const [adminApi, adminLoginApi, commercial] = await Promise.all([
     readFile(new URL("../app/api/admin/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/auth/admin-login/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/_lib/commercial.ts", import.meta.url), "utf8"),
   ]);
   assert.match(adminApi, /isPlatformAdmin\(user\.email\)/);
   assert.match(adminApi, /status: 403/);
   assert.match(adminLoginApi, /isPlatformAdmin\(data\.user\.email\)/);
   assert.match(adminLoginApi, /signOut/);
   assert.match(adminLoginApi, /status: 403/);
+  const configuredAdminCheck = commercial.indexOf("normalized === configuredAdmin");
+  const databaseFallback = commercial.indexOf("await ensureCommercialSchema();", configuredAdminCheck);
+  assert.ok(configuredAdminCheck >= 0 && databaseFallback > configuredAdminCheck,
+    "o e-mail administrativo configurado deve ser autorizado antes da consulta ao MySQL");
 });
 
 test("arquivos usam armazenamento privado, autorização e metadados relacionais", async () => {

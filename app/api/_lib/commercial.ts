@@ -75,11 +75,11 @@ export async function ensureCommercialSchema() {
 }
 
 export async function isPlatformAdmin(email: string) {
-  await ensureCommercialSchema();
   const normalized = email.trim().toLowerCase();
   if (!normalized) return false;
   const configuredAdmin = runtimeValue("PLATFORM_ADMIN_EMAIL").toLowerCase();
   if (configuredAdmin && normalized === configuredAdmin) return true;
+  await ensureCommercialSchema();
   const row = await env.DB.prepare("SELECT email FROM platform_admins WHERE lower(email) = ? AND role = 'super_admin' AND status = 'active' LIMIT 1")
     .bind(normalized).first();
   return Boolean(row);
