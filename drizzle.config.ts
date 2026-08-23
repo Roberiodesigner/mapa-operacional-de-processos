@@ -1,15 +1,14 @@
 import { defineConfig } from "drizzle-kit";
+import { normalizeDatabaseUrl } from "./platform/hostinger-env";
 
-if (!process.env.DATABASE_URL?.trim()) {
-  throw new Error("DATABASE_URL é obrigatória para os comandos do Drizzle");
-}
+const databaseUrl = normalizeDatabaseUrl(process.env.DATABASE_URL, process.env.DATABASE_PASSWORD);
 
 export default defineConfig({
   dialect: "postgresql",
   schema: "./db/schema.ts",
   out: "./drizzle-postgres",
   dbCredentials: {
-    url: process.env.DATABASE_URL,
+    url: databaseUrl,
   },
   strict: true,
   verbose: true,

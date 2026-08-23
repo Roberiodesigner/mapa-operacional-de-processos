@@ -38,6 +38,14 @@ test("DATABASE_URL aceita URI válida e remove aspas adicionadas pela hospedagem
   assert.throws(() => normalizeDatabaseUrl("postgresql://valor incompleto"), /DATABASE_URL inválida/);
 });
 
+test("senha separada é codificada com segurança na URL do Session pooler", () => {
+  const template = "postgresql://postgres.projeto:[YOUR-PASSWORD]@aws-0-sa-east-1.pooler.supabase.com:5432/postgres";
+  const expected = "postgresql://postgres.projeto:Senha%40%23%25%2F%3F%3A@aws-0-sa-east-1.pooler.supabase.com:5432/postgres";
+  assert.equal(normalizeDatabaseUrl(template, "Senha@#%/?:"), expected);
+  assert.equal(normalizeDatabaseUrl(`\"${template}\"`, "Senha@#%/?:"), expected);
+  assert.throws(() => normalizeDatabaseUrl(template), /DATABASE_PASSWORD não configurada/);
+});
+
 test("SQL Supabase cobre dados, administração, cobrança, revisão, Storage e RLS", async () => {
   const schema = await readFile(new URL("../supabase/schema.sql", import.meta.url), "utf8");
   for (const table of [
@@ -66,6 +74,7 @@ test("variáveis de produção são documentadas sem credenciais reais", async (
     "NEXT_PUBLIC_SUPABASE_URL",
     "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
     "DATABASE_URL",
+    "DATABASE_PASSWORD",
     "DATABASE_POOL_SIZE",
     "SUPABASE_STORAGE_BUCKET",
   ]) assert.match(example, new RegExp(`^${key}=`, "m"));
@@ -83,6 +92,8 @@ test("Drizzle está configurado para PostgreSQL e Postgres.js", async () => {
   ]);
   assert.match(config, /dialect: "postgresql"/);
   assert.match(config, /DATABASE_URL/);
+  assert.match(config, /DATABASE_PASSWORD/);
+  assert.match(config, /normalizeDatabaseUrl/);
   assert.match(db, /drizzle-orm\/postgres-js/);
   assert.match(runtime, /prepare: false/);
   assert.match(runtime, /ssl: "require"/);

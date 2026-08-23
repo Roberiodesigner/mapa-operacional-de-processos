@@ -9,7 +9,9 @@ export type DatabaseRunResult = {
 
 type QueryExecutor = postgres.Sql | postgres.TransactionSql;
 
-export function normalizeDatabaseUrl(input: string | undefined) {
+const DATABASE_PASSWORD_PLACEHOLDER = "[YOUR-PASSWORD]";
+
+export function normalizeDatabaseUrl(input: string | undefined, password?: string) {
   let value = input?.trim() || "";
   if (!value) throw new Error("Banco Supabase Postgres não configurado: DATABASE_URL");
 
@@ -17,6 +19,13 @@ export function normalizeDatabaseUrl(input: string | undefined) {
   const last = value[value.length - 1];
   if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
     value = value.slice(1, -1).trim();
+  }
+
+  if (value.includes(DATABASE_PASSWORD_PLACEHOLDER)) {
+    if (!password) {
+      throw new Error("DATABASE_PASSWORD não configurada: informe a senha do banco em uma variável separada");
+    }
+    value = value.replaceAll(DATABASE_PASSWORD_PLACEHOLDER, encodeURIComponent(password));
   }
 
   if (/\s/.test(value)) {
@@ -36,7 +45,7 @@ export function normalizeDatabaseUrl(input: string | undefined) {
 }
 
 function databaseUrl() {
-  return normalizeDatabaseUrl(process.env.DATABASE_URL);
+  return normalizeDatabaseUrl(process.env.DATABASE_URL, process.env.DATABASE_PASSWORD);
 }
 
 let client: postgres.Sql | null = null;
