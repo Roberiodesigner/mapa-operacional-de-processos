@@ -46,6 +46,22 @@ test("senha separada é codificada com segurança na URL do Session pooler", () 
   assert.throws(() => normalizeDatabaseUrl(template), /DATABASE_PASSWORD não configurada/);
 });
 
+test("conexão é reconstruída sem depender de DATABASE_URL válida", () => {
+  const expected = "postgresql://postgres.projeto:Senha%40%23@aws-0-sa-east-1.pooler.supabase.com:5432/postgres";
+  assert.equal(
+    normalizeDatabaseUrl(undefined, "Senha@#", "https://projeto.supabase.co", "aws-0-sa-east-1.pooler.supabase.com"),
+    expected,
+  );
+  assert.equal(
+    normalizeDatabaseUrl(
+      "postgresql://conteudo quebrado@aws-0-sa-east-1.pooler.supabase.com:5432/postgres",
+      "Senha@#",
+      "https://projeto.supabase.co",
+    ),
+    expected,
+  );
+});
+
 test("SQL Supabase cobre dados, administração, cobrança, revisão, Storage e RLS", async () => {
   const schema = await readFile(new URL("../supabase/schema.sql", import.meta.url), "utf8");
   for (const table of [
@@ -73,6 +89,7 @@ test("variáveis de produção são documentadas sem credenciais reais", async (
   for (const key of [
     "NEXT_PUBLIC_SUPABASE_URL",
     "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
+    "SUPABASE_DB_HOST",
     "DATABASE_URL",
     "DATABASE_PASSWORD",
     "DATABASE_POOL_SIZE",

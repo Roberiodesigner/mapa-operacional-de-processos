@@ -10,15 +10,49 @@ export type DatabaseRunResult = {
 type QueryExecutor = postgres.Sql | postgres.TransactionSql;
 
 const DATABASE_PASSWORD_PLACEHOLDER = "[YOUR-PASSWORD]";
+const SUPABASE_POOLER_HOST = /([a-z0-9-]+\.pooler\.supabase\.com)/i;
 
-export function normalizeDatabaseUrl(input: string | undefined, password?: string) {
-  let value = input?.trim() || "";
-  if (!value) throw new Error("Banco Supabase Postgres não configurado: DATABASE_URL");
-
-  const first = value[0];
-  const last = value[value.length - 1];
+function stripWrappingQuotes(input: string) {
+  const first = input[0];
+  const last = input[input.length - 1];
   if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
-    value = value.slice(1, -1).trim();
+    return input.slice(1, -1).trim();
+  }
+  return input;
+}
+
+function buildSupabasePoolerUrl(password: string | undefined, supabaseUrl: string | undefined, poolerHost: string | undefined) {
+  if (!password || !supabaseUrl || !poolerHost) return null;
+
+  let projectUrl: URL;
+  try {
+    projectUrl = new URL(stripWrappingQuotes(supabaseUrl.trim()));
+  } catch {
+    return null;
+  }
+
+  const projectRef = projectUrl.hostname.match(/^([a-z0-9-]+)\.supabase\.co$/i)?.[1];
+  const host = poolerHost.match(SUPABASE_POOLER_HOST)?.[1];
+  if (!projectRef || !host) return null;
+
+  return `postgresql://postgres.${projectRef}:${encodeURIComponent(password)}@${host}:5432/postgres`;
+}
+
+export function normalizeDatabaseUrl(
+  input: string | undefined,
+  password?: string,
+  supabaseUrl?: string,
+  configuredPoolerHost?: string,
+) {
+  let value = input?.trim() || "";
+  if (value) value = stripWrappingQuotes(value);
+
+  const detectedPoolerHost = configuredPoolerHost?.trim() || value.match(SUPABASE_POOLER_HOST)?.[1];
+  const rebuiltUrl = buildSupabasePoolerUrl(password, supabaseUrl, detectedPoolerHost);
+  if (rebuiltUrl) return rebuiltUrl;
+
+  if (!value) {
+    throw new Error("Banco Supabase Postgres não configurado: informe SUPABASE_DB_HOST e DATABASE_PASSWORD");
   }
 
   if (value.includes(DATABASE_PASSWORD_PLACEHOLDER)) {
@@ -45,7 +79,12 @@ export function normalizeDatabaseUrl(input: string | undefined, password?: strin
 }
 
 function databaseUrl() {
-  return normalizeDatabaseUrl(process.env.DATABASE_URL, process.env.DATABASE_PASSWORD);
+  return normalizeDatabaseUrl(
+    process.env.DATABASE_URL,
+    process.env.DATABASE_PASSWORD,
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.SUPABASE_DB_HOST,
+  );
 }
 
 let client: postgres.Sql | null = null;
