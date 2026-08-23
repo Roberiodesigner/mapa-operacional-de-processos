@@ -19,3 +19,14 @@ test("origem pública ignora host encaminhado inválido", () => {
   });
   assert.equal(publicOrigin(request), "https://mapa.exemplo.com.br");
 });
+
+test("origem pública não derruba o painel quando a URL interna do proxy é inválida", () => {
+  const request = {
+    url: "url-interna-inválida",
+    headers: new Headers({
+      host: "mapa.exemplo.com.br",
+      "x-forwarded-proto": "https",
+    }),
+  };
+  assert.equal(publicOrigin(request), "https://mapa.exemplo.com.br");
+});

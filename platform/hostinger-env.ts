@@ -9,10 +9,34 @@ export type DatabaseRunResult = {
 
 type QueryExecutor = postgres.Sql | postgres.TransactionSql;
 
-function databaseUrl() {
-  const value = process.env.DATABASE_URL?.trim();
+export function normalizeDatabaseUrl(input: string | undefined) {
+  let value = input?.trim() || "";
   if (!value) throw new Error("Banco Supabase Postgres não configurado: DATABASE_URL");
+
+  const first = value[0];
+  const last = value[value.length - 1];
+  if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+    value = value.slice(1, -1).trim();
+  }
+
+  if (/\s/.test(value)) {
+    throw new Error("DATABASE_URL inválida: remova espaços e quebras de linha");
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error("DATABASE_URL inválida: copie novamente a URI do Session pooler do Supabase");
+  }
+  if (!["postgres:", "postgresql:"].includes(parsed.protocol) || !parsed.hostname || !parsed.username || !parsed.password) {
+    throw new Error("DATABASE_URL inválida: confira usuário, senha e servidor do Session pooler");
+  }
   return value;
+}
+
+function databaseUrl() {
+  return normalizeDatabaseUrl(process.env.DATABASE_URL);
 }
 
 let client: postgres.Sql | null = null;

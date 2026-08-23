@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { translatePostgresCompatibilityQuery } from "../platform/hostinger-env.ts";
+import { normalizeDatabaseUrl, translatePostgresCompatibilityQuery } from "../platform/hostinger-env.ts";
 
 test("runtime da Hostinger usa Next.js, Node e Postgres sem dependências Cloudflare ou MySQL", async () => {
   const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
@@ -29,6 +29,13 @@ test("camada Postgres converte placeholders e compatibilidade legada", () => {
     "INSERT INTO billing_plans (code, name) VALUES ($1, $2) ON CONFLICT(code) DO UPDATE SET name = excluded.name",
   );
   assert.equal(translatePostgresCompatibilityQuery("CREATE TABLE ignored (id TEXT)").schemaOnly, true);
+});
+
+test("DATABASE_URL aceita URI válida e remove aspas adicionadas pela hospedagem", () => {
+  const uri = "postgresql://postgres.projeto:SenhaSomenteLetras123@aws-0-sa-east-1.pooler.supabase.com:5432/postgres";
+  assert.equal(normalizeDatabaseUrl(uri), uri);
+  assert.equal(normalizeDatabaseUrl(`\"${uri}\"`), uri);
+  assert.throws(() => normalizeDatabaseUrl("postgresql://valor incompleto"), /DATABASE_URL inválida/);
 });
 
 test("SQL Supabase cobre dados, administração, cobrança, revisão, Storage e RLS", async () => {
